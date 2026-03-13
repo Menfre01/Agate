@@ -514,13 +514,6 @@ CREATE TABLE quota_changes (
 - `entity_type`: 实体类型（`api_key` / `department` / `company`）
 - `change_type`: 变更类型（`set` / `add` / `reset` / `bonus`）
 - `change_amount`: 变更量（正数为增加，负数为减少）
-    previous_quota INTEGER NOT NULL,
-    new_quota INTEGER NOT NULL,
-    reason TEXT,
-    created_by TEXT,
-    created_at INTEGER NOT NULL
-    );
-```
 
 ---
 
@@ -581,6 +574,7 @@ GET    /admin/companies          # 列出公司
 POST   /admin/companies          # 创建公司
 GET    /admin/departments        # 列出部门
 POST   /admin/departments        # 创建部门
+```
 
 ---
 
