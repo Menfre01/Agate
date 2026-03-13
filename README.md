@@ -136,7 +136,7 @@ npm run typecheck
 
 ## License
 
-MIT
+[MIT](./LICENSE) © 2025 Agate Contributors
 
 ---
 
