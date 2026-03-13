@@ -52,16 +52,11 @@ npm run dev
 - 创建 API Key
 - 发送真实的 LLM 请求
 - 查询使用统计
+- **自动清理测试数据**
 
-### 5. 清理测试数据
+### 5. 手动清理（可选）
 
-测试结束后会显示清理命令：
-
-```bash
-./tests/e2e/cleanup.sh /tmp/e2e_test_ids_<timestamp>.txt
-```
-
-或直接重置数据库：
+如果测试被中断或清理失败，可以手动重置数据库：
 
 ```bash
 npx wrangler d1 execute ai-gateway-db --local --file=./scripts/reset-data.sql
@@ -71,9 +66,9 @@ npx wrangler d1 execute ai-gateway-db --local --file=./scripts/reset-data.sql
 
 **问题**: `.env.local` 中的 `ADMIN_API_KEY` 从哪里获取？
 
-**答案**: E2E 测试脚本会自动创建测试用的 Admin Key，无需手动配置。
+**答案**: 无需手动配置。E2E 测试脚本会自动创建测试用的 Admin Key，并在测试结束后自动清理。
 
-如果需要手动创建：
+如果需要手动创建（用于开发调试）：
 
 ```bash
 # 方法 1: 使用初始化脚本
@@ -99,15 +94,32 @@ flowchart TB
     G --> H[测试模型列表]
     H --> I[发送 LLM 请求]
     I --> J[查询统计数据]
-    J --> K[清理数据]
+    J --> K[自动清理数据]
+    K --> L[测试完成]
 ```
 
 ## 环境变量说明
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `ANTHROPIC_API_KEY` | ✅ | - | Anthropic API 密钥 |
-| `ANTHROPIC_BASE_URL` | ❌ | `https://api.anthropic.com` | 上游 API 地址 |
-| `TEST_MODEL_ID` | ❌ | `claude-3-5-haiku-20241022` | 测试用模型 |
+| `ANTHROPIC_API_KEY` | ✅ | - | 上游 API 密钥 |
+| `ANTHROPIC_BASE_URL` | ❌ | `https://api.anthropic.com` | 自定义供应商地址 |
+| `TEST_MODEL_ID` | ❌ | `claude-3-5-sonnet-20241022` | 测试用模型 ID |
 | `GATEWAY_BASE_URL` | ❌ | `http://localhost:8787` | 网关地址 |
 | `ADMIN_API_KEY` | ❌ | 自动生成 | 管理 API 密钥 |
+
+## 自定义供应商和模型
+
+E2E 测试支持使用自定义的供应商和模型配置，方便测试不同的上游服务：
+
+```bash
+# 示例：使用自定义代理和模型
+ANTHROPIC_BASE_URL=https://your-proxy.com/v1
+ANTHROPIC_API_KEY=your-custom-key
+TEST_MODEL_ID=custom-model-name
+```
+
+测试脚本会：
+1. 根据 `ANTHROPIC_BASE_URL` 创建/查找供应商
+2. 使用 `TEST_MODEL_ID` 创建/查找模型
+3. 自动关联供应商凭证和模型定价

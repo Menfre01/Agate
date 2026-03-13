@@ -90,11 +90,21 @@ export class AuthService {
       throw new UnauthorizedError("API key has expired");
     }
 
-    // Cache the validated key
-    await this.cache.setApiKey(keyHash, keyData);
-
     // Build full auth context with user and company info
-    return await this.buildAuthContext(keyData);
+    const authContext = await this.buildAuthContext(keyData);
+
+    // Cache the validated key with user/company info
+    const [user, company, department] = await Promise.all([
+      queries.getUser(this.db, keyData.user_id),
+      queries.getCompany(this.db, keyData.company_id),
+      keyData.department_id ? queries.getDepartment(this.db, keyData.department_id) : Promise.resolve(null),
+    ]);
+
+    if (user && company) {
+      await this.cache.setApiKey(keyHash, keyData, user, company, department);
+    }
+
+    return authContext;
   }
 
   /**
@@ -133,8 +143,13 @@ export class AuthService {
   private buildAuthContextFromCache(cached: {
     id: string;
     user_id: string;
+    user_role: string;
+    user_email: string;
+    user_name: string;
     company_id: string;
+    company_name: string;
     department_id: string | null;
+    department_name: string | null;
     quota_daily: number;
     quota_used: number;
     quota_bonus: number;
@@ -146,13 +161,13 @@ export class AuthService {
     return {
       apiKeyId: cached.id,
       userId: cached.user_id,
-      userEmail: "", // Not in cache, populated on full lookup
-      userName: null,
-      userRole: "user", // Default, populated on full lookup
+      userEmail: cached.user_email,
+      userName: cached.user_name,
+      userRole: cached.user_role as "admin" | "user",
       companyId: cached.company_id,
-      companyName: "", // Not in cache
+      companyName: cached.company_name,
       departmentId: cached.department_id,
-      departmentName: null,
+      departmentName: cached.department_name,
       quotaDaily: cached.quota_daily,
       quotaUsed: cached.quota_used,
       quotaBonus: cached.quota_bonus,

@@ -29,8 +29,8 @@ fi
 
 GATEWAY_URL="${GATEWAY_BASE_URL:-http://localhost:8787}"
 
-# Load admin key
-if [ -f ".env.local" ]; then
+# Load admin key from .env.local only if not already set in ID file
+if [ -z "$ADMIN_API_KEY" ] && [ -f ".env.local" ]; then
   source .env.local
 fi
 

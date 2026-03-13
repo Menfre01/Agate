@@ -39,10 +39,20 @@ export interface CachedApiKey {
   key_prefix: string;
   /** User ID */
   user_id: string;
+  /** User role (admin/user) */
+  user_role: string;
+  /** User email */
+  user_email: string;
+  /** User name */
+  user_name: string;
   /** Company ID */
   company_id: string;
+  /** Company name */
+  company_name: string;
   /** Department ID */
   department_id: string | null;
+  /** Department name */
+  department_name: string | null;
   /** Key name */
   name: string | null;
   /** Daily quota */
@@ -105,11 +115,17 @@ export class CacheService {
    *
    * @param keyHash - SHA-256 hash of the API key
    * @param apiKey - API Key entity to cache
+   * @param user - User entity for additional context
+   * @param company - Company entity for additional context
+   * @param department - Department entity (optional)
    * @param ttl - Time-to-live in seconds (default: API_KEY_TTL)
    */
   async setApiKey(
     keyHash: string,
     apiKey: ApiKey,
+    user: { id: string; email: string; name: string; role: string },
+    company: { id: string; name: string },
+    department: { id: string; name: string } | null,
     ttl: number = CACHE_TTL.API_KEY
   ): Promise<void> {
     const key = this.apiKeyKey(keyHash);
@@ -117,8 +133,13 @@ export class CacheService {
       id: apiKey.id,
       key_prefix: apiKey.key_prefix,
       user_id: apiKey.user_id,
+      user_role: user.role,
+      user_email: user.email,
+      user_name: user.name,
       company_id: apiKey.company_id,
+      company_name: company.name,
       department_id: apiKey.department_id,
+      department_name: department?.name ?? null,
       name: apiKey.name,
       quota_daily: apiKey.quota_daily,
       quota_used: apiKey.quota_used,
