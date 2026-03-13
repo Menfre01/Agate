@@ -1,0 +1,38 @@
+{
+  "name": "ai-gateway",
+  "version": "0.1.0",
+  "description": "AI Gateway for proxying Anthropic API requests with multi-tenant management",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "db:migrate": "wrangler d1 execute ai-gateway-db --file=./src/db/schema.sql",
+    "db:migrate:local": "wrangler d1 execute ai-gateway-db --file=./src/db/schema.sql --local",
+    "db:query": "wrangler d1 execute ai-gateway-db --command",
+    "db:query:local": "wrangler d1 execute ai-gateway-db --command --local",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai-gateway",
+    "anthropic",
+    "cloudflare-workers"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0"
+  },
+  "devDependencies": {
+    "@vitest/ui": "^2.1.8",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.94.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
