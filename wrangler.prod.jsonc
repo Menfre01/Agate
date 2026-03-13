@@ -1,5 +1,5 @@
 {
-  // AI Gateway - Production Configuration
+  // Agate - Production Configuration
   //
   // This is the production configuration template.
   // Before deploying, update the following values:
@@ -9,7 +9,7 @@
   // 3. ENVIRONMENT: Set to "production"
   // 4. route: Your production domain
 
-  "name": "ai-gateway",
+  "name": "agate",
   "compatibility_date": "2024-01-01",
   "main": "src/index.ts",
   "compatibility_flags": ["nodejs_compat"],
@@ -17,7 +17,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ai-gateway-db",
+      "database_name": "agate-db",
       "database_id": "YOUR_D1_DATABASE_ID"  // TODO: Update with your D1 database ID
     }
   ],

@@ -125,10 +125,14 @@ describe("CacheService", () => {
       updated_at: Date.now(),
     };
 
+    const mockUser = { id: "user-123", email: "test@example.com", name: "Test User", role: "admin" };
+    const mockCompany = { id: "company-123", name: "Test Company" };
+    const mockDepartment = { id: "dept-123", name: "Test Department" };
+
     it("should cache and retrieve API key data", async () => {
       const keyHash = "test-hash-123";
 
-      await cache.setApiKey(keyHash, mockApiKey);
+      await cache.setApiKey(keyHash, mockApiKey, mockUser, mockCompany, mockDepartment);
       const cached = await cache.getApiKey(keyHash);
 
       expect(cached).toBeDefined();
@@ -146,7 +150,7 @@ describe("CacheService", () => {
     it("should store with default TTL", async () => {
       const keyHash = "test-hash-456";
 
-      await cache.setApiKey(keyHash, mockApiKey);
+      await cache.setApiKey(keyHash, mockApiKey, mockUser, mockCompany, mockDepartment);
       const cached = await cache.getApiKey(keyHash);
 
       expect(cached).toBeDefined();
@@ -155,7 +159,7 @@ describe("CacheService", () => {
     it("should store with custom TTL", async () => {
       const keyHash = "test-hash-789";
 
-      await cache.setApiKey(keyHash, mockApiKey, CACHE_TTL.SHORT);
+      await cache.setApiKey(keyHash, mockApiKey, mockUser, mockCompany, mockDepartment, CACHE_TTL.SHORT);
       const cached = await cache.getApiKey(keyHash);
 
       expect(cached).toBeDefined();
@@ -167,7 +171,7 @@ describe("CacheService", () => {
         department_id: null,
       };
 
-      await cache.setApiKey("hash-no-dept", apiKeyNoDept);
+      await cache.setApiKey("hash-no-dept", apiKeyNoDept, mockUser, mockCompany, null);
       const cached = await cache.getApiKey("hash-no-dept");
 
       expect(cached?.department_id).toBeNull();
@@ -183,7 +187,7 @@ describe("CacheService", () => {
         quota_bonus_expiry: null,
       };
 
-      await cache.setApiKey("hash-nulls", apiKeyNulls);
+      await cache.setApiKey("hash-nulls", apiKeyNulls, mockUser, mockCompany, null);
       const cached = await cache.getApiKey("hash-nulls");
 
       expect(cached?.department_id).toBeNull();
@@ -217,9 +221,12 @@ describe("CacheService", () => {
         updated_at: Date.now(),
       };
 
+      const mockUser = { id: "user-123", email: "test@example.com", name: "Test User", role: "admin" };
+      const mockCompany = { id: "company-123", name: "Test Company" };
+
       const keyHash = "hash-to-delete";
 
-      await cache.setApiKey(keyHash, mockApiKey);
+      await cache.setApiKey(keyHash, mockApiKey, mockUser, mockCompany, null);
       expect(await cache.getApiKey(keyHash)).toBeDefined();
 
       await cache.deleteApiKey(keyHash);

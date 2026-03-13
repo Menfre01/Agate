@@ -1,5 +1,5 @@
 /**
- * AI Gateway - Main Entry Point
+ * Agate - Your AI Gateway
  *
  * A Cloudflare Worker-based gateway for proxying AI API requests
  * with multi-tenant management, quota control, and usage tracking.

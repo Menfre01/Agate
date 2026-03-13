@@ -101,7 +101,13 @@ export class AuthService {
     ]);
 
     if (user && company) {
-      await this.cache.setApiKey(keyHash, keyData, user, company, department);
+      await this.cache.setApiKey(
+        keyHash,
+        keyData,
+        { id: user.id, email: user.email, name: user.name ?? "", role: user.role },
+        { id: company.id, name: company.name },
+        department ? { id: department.id, name: department.name } : null
+      );
     }
 
     return authContext;

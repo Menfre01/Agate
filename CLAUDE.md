@@ -1,4 +1,4 @@
-# AI Gateway - Claude 开发规范
+# Agate - Claude 开发规范
 
 ## 提交规范
 
