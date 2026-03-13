@@ -349,6 +349,18 @@ export class Queries {
   }
 
   /**
+   * List all departments
+   *
+   * @returns Array of all departments
+   */
+  async listAllDepartments(): Promise<Department[]> {
+    const result = await this.db
+      .prepare('SELECT * FROM departments ORDER BY company_id, name')
+      .all<Department>();
+    return result.results;
+  }
+
+  /**
    * Create a new department
    *
    * @param data - Department creation data
@@ -479,6 +491,32 @@ export class Queries {
     const result = await this.db
       .prepare('SELECT * FROM users WHERE company_id = ?1 ORDER BY created_at DESC')
       .bind(companyId)
+      .all<User>();
+    return result.results;
+  }
+
+  /**
+   * List users by department
+   *
+   * @param departmentId - Department ID
+   * @returns Array of users
+   */
+  async listUsersByDepartment(departmentId: string): Promise<User[]> {
+    const result = await this.db
+      .prepare('SELECT * FROM users WHERE department_id = ?1 ORDER BY created_at DESC')
+      .bind(departmentId)
+      .all<User>();
+    return result.results;
+  }
+
+  /**
+   * List all users
+   *
+   * @returns Array of all users
+   */
+  async listAllUsers(): Promise<User[]> {
+    const result = await this.db
+      .prepare('SELECT * FROM users ORDER BY company_id, created_at DESC')
       .all<User>();
     return result.results;
   }
@@ -1657,6 +1695,7 @@ export const deleteCompany = (db: D1Database, id: string) => getQueries(db).dele
 export const getDepartment = (db: D1Database, id: string) => getQueries(db).getDepartment(id);
 export const listDepartmentsByCompany = (db: D1Database, companyId: string) =>
   getQueries(db).listDepartmentsByCompany(companyId);
+export const listAllDepartments = (db: D1Database) => getQueries(db).listAllDepartments();
 export const createDepartment = (db: D1Database, data: CreateDepartmentDto) =>
   getQueries(db).createDepartment(data);
 export const updateDepartment = (db: D1Database, id: string, data: UpdateDepartmentDto) =>
@@ -1668,6 +1707,9 @@ export const getUser = (db: D1Database, id: string) => getQueries(db).getUser(id
 export const getUserByEmail = (db: D1Database, email: string) => getQueries(db).getUserByEmail(email);
 export const listUsersByCompany = (db: D1Database, companyId: string) =>
   getQueries(db).listUsersByCompany(companyId);
+export const listUsersByDepartment = (db: D1Database, departmentId: string) =>
+  getQueries(db).listUsersByDepartment(departmentId);
+export const listAllUsers = (db: D1Database) => getQueries(db).listAllUsers();
 export const createUser = (db: D1Database, data: CreateUserDto) => getQueries(db).createUser(data);
 export const updateUser = (db: D1Database, id: string, data: UpdateUserDto) =>
   getQueries(db).updateUser(id, data);

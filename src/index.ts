@@ -21,6 +21,9 @@ import { providersRouteHandler } from "@/api/admin/providers.js";
 import { modelsRouteHandler as adminModelsRouteHandler } from "@/api/admin/models.js";
 import { statsRouteHandler, logsRouteHandler } from "@/api/admin/stats.js";
 import { quotasRouteHandler } from "@/api/admin/quotas.js";
+import { companiesRouteHandler } from "@/api/admin/companies.js";
+import { departmentsRouteHandler } from "@/api/admin/departments.js";
+import { usersRouteHandler } from "@/api/admin/users.js";
 
 /**
  * Creates request context from incoming request.
@@ -122,6 +125,15 @@ export default {
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       // Admin API routes
+      response = await companiesRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
+      response = await departmentsRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
+      response = await usersRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
       response = await keysRouteHandler(request, env, context);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 

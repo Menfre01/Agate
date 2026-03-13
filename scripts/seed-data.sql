@@ -10,7 +10,7 @@
 -- ============================================
 
 -- Default company
-INSERT INTO companies (id, name, quota_pool, quota_used, quota_daily, daily_used, created_at, updated_at)
+INSERT INTO companies (id, name, quota_pool, quota_used, quota_daily, daily_used, last_reset_at, created_at, updated_at)
 VALUES (
   'co_demo_company',
   'Demo Company',
@@ -24,7 +24,7 @@ VALUES (
 );
 
 -- Default department
-INSERT INTO departments (id, company_id, name, quota_pool, quota_used, quota_daily, daily_used, created_at, updated_at)
+INSERT INTO departments (id, company_id, name, quota_pool, quota_used, quota_daily, daily_used, last_reset_at, created_at, updated_at)
 VALUES (
   'dept_engineering',
   'co_demo_company',
@@ -78,13 +78,15 @@ VALUES (
 -- using the KeyService. The prefix is what users see.
 
 -- Admin API key (unlimited)
+-- Note: This is a placeholder hash. Generate real keys via API or using the KeyService.
+-- For testing, you can use any unique string as the hash.
 INSERT INTO api_keys (
   id, key_hash, key_prefix, user_id, company_id, department_id,
   name, quota_daily, quota_used, quota_bonus, is_unlimited, is_active,
   created_at, updated_at
 ) VALUES (
   'ak_admin_key',
-  '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  -- Replace with real hash
+  '$2a$10$admin_placeholder_hash_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  -- Placeholder - replace with real hash
   'sk_admin_',
   'u_admin',
   'co_demo_company',
@@ -106,7 +108,7 @@ INSERT INTO api_keys (
   created_at, updated_at
 ) VALUES (
   'ak_demo_key',
-  '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  -- Replace with real hash
+  '$2a$10$demo_placeholder_hash_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  -- Placeholder - replace with real hash
   'sk_demo_',
   'u_demo_user',
   'co_demo_company',
