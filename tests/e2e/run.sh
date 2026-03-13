@@ -24,7 +24,10 @@ else
   exit 1
 fi
 
+# Use environment variables or defaults
 GATEWAY_URL="${GATEWAY_BASE_URL:-http://localhost:8787}"
+ANTHROPIC_URL="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
+TEST_MODEL="${TEST_MODEL_ID:-claude-3-5-haiku-20241022}"
 
 # Unique identifiers for this test run
 TIMESTAMP=$(date +%s)
@@ -35,7 +38,7 @@ TEST_USER_ID="u_test_${TIMESTAMP}"
 TEST_USER_EMAIL="test_${TIMESTAMP}@example.com"
 TEST_PROVIDER_ID="p_anthropic_${TIMESTAMP}"
 TEST_MODEL_ID="m_claude_haiku_${TIMESTAMP}"
-TEST_MODEL_NAME="claude-3-5-haiku-20241022"
+TEST_MODEL_NAME="${TEST_MODEL}"
 
 # For storing created resources
 CREATED_KEYS=()
@@ -135,7 +138,7 @@ fi
 
 # Step 3: Create Provider with Credential
 echo -e "\n${YELLOW}[3/11] Create Provider${NC}"
-PROVIDER_RESPONSE=$(api_call "POST" "/admin/providers" "{\"id\":\"${TEST_PROVIDER_ID}\",\"name\":\"anthropic\",\"display_name\":\"Anthropic\",\"base_url\":\"https://api.anthropic.com\",\"api_version\":\"v1\"}" "$ADMIN_API_KEY")
+PROVIDER_RESPONSE=$(api_call "POST" "/admin/providers" "{\"id\":\"${TEST_PROVIDER_ID}\",\"name\":\"anthropic\",\"display_name\":\"Anthropic\",\"base_url\":\"${ANTHROPIC_URL}\",\"api_version\":\"v1\"}" "$ADMIN_API_KEY")
 if echo "$PROVIDER_RESPONSE" | grep -q "id"; then
   echo -e "${GREEN}✓ Provider created${NC}"
 else
