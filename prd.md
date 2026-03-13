@@ -881,18 +881,20 @@ flowchart TB
 
 ---
 
-### Wave 2: 核心服务 ⏳ 待开始
+### Wave 2: 核心服务 ✅ 完成
 
 | 服务 | 文件 | 状态 |
 |------|------|------|
-| CacheService | `src/services/cache.service.ts` | ⏳ |
-| AuthService | `src/services/auth.service.ts` | ⏳ |
-| KeyService | `src/services/key.service.ts` | ⏳ |
-| QuotaService | `src/services/quota.service.ts` | ⏳ |
-| ProviderService | `src/services/provider.service.ts` | ⏳ |
-| ModelService | `src/services/model.service.ts` | ⏳ |
-| UsageService | `src/services/usage.service.ts` | ⏳ |
-| ProxyService | `src/services/proxy.service.ts` | ⏳ |
+| CacheService | `src/services/cache.service.ts` | ✅ |
+| AuthService | `src/services/auth.service.ts` | ✅ |
+| KeyService | `src/services/key.service.ts` | ✅ |
+| QuotaService | `src/services/quota.service.ts` | ✅ |
+| ProviderService | `src/services/provider.service.ts` | ✅ |
+| ModelService | `src/services/model.service.ts` | ✅ |
+| UsageService | `src/services/usage.service.ts` | ✅ |
+| ProxyService | `src/services/proxy.service.ts` | ✅ |
+
+**验收**: ✅ 115 个单元测试全部通过
 
 ---
 
@@ -930,11 +932,11 @@ flowchart TB
 ```
 Wave 0 ████████████████████ 100% ✅
 Wave 1 ████████████████████ 100% ✅
-Wave 2 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
+Wave 2 ████████████████████ 100% ✅
 Wave 3 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
 Wave 4 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
 ----------------------------
-总体  ████░░░░░░░░░░░░░░░░  40%
+总体  ███████░░░░░░░░░░░░░  60%
 ```
 
 **最后更新**: 2026-03-13
