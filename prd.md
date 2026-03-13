@@ -892,20 +892,26 @@ flowchart TB
 
 ---
 
-### Wave 3: API 集成 ⏳ 待开始
+### Wave 3: API 集成 ✅ 完成
 
 | 分组 | 任务 | 文件 | 状态 |
 |------|------|------|------|
-| **中间件** | 认证 | `src/middleware/auth.ts` | ⏳ |
-| | 限流 | `src/middleware/ratelimit.ts` | ⏳ |
-| | 日志 | `src/middleware/logger.ts` | ⏳ |
-| **代理 API** | 消息代理 | `src/api/proxy/anthropic.ts` | ⏳ |
-| | 模型列表 | `src/api/proxy/models.ts` | ⏳ |
-| **管理 API** | API Key 管理 | `src/api/admin/keys.ts` | ⏳ |
-| | 供应商管理 | `src/api/admin/providers.ts` | ⏳ |
-| | 模型管理 | `src/api/admin/models.ts` | ⏳ |
-| | 统计分析 | `src/api/admin/stats.ts` | ⏳ |
-| | 配额管理 | `src/api/admin/quotas.ts` | ⏳ |
+| **中间件** | 认证 | `src/middleware/auth.ts` | ✅ |
+| | 限流 | `src/middleware/ratelimit.ts` | ✅ |
+| | 日志 | `src/middleware/logger.ts` | ✅ |
+| **代理 API** | 消息代理 | `src/api/proxy/anthropic.ts` | ✅ |
+| | 模型列表 | `src/api/proxy/models.ts` | ✅ |
+| **管理 API** | API Key 管理 | `src/api/admin/keys.ts` | ✅ |
+| | 供应商管理 | `src/api/admin/providers.ts` | ✅ |
+| | 模型管理 | `src/api/admin/models.ts` | ✅ |
+| | 统计分析 | `src/api/admin/stats.ts` | ✅ |
+| | 配额管理 | `src/api/admin/quotas.ts` | ✅ |
+
+**扩展功能**:
+- QuotaService: setQuota, resetQuota, addBonusQuota, getQuotaInfo
+- UsageService: getUsageStats, getTokenUsage, getCostAnalysis, getModelStats
+
+**测试**: 140 个测试通过（115 单元测试 + 25 集成测试）
 
 ---
 
@@ -927,10 +933,10 @@ flowchart TB
 Wave 0 ████████████████████ 100% ✅
 Wave 1 ████████████████████ 100% ✅
 Wave 2 ████████████████████ 100% ✅
-Wave 3 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
+Wave 3 ████████████████████ 100% ✅
 Wave 4 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
 ----------------------------
-总体  ███████░░░░░░░░░░░░░  60%
+总体  ████████████░░░░░░░░░  80%
 ```
 
 **最后更新**: 2026-03-13

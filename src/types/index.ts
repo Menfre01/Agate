@@ -1075,9 +1075,11 @@ export interface Env {
   /** D1 database binding */
   DB: import('@cloudflare/workers-types').D1Database;
   /** KV namespace for cache */
-  CACHE: import('@cloudflare/workers-types').KVNamespace;
+  KV_CACHE: import('@cloudflare/workers-types').KVNamespace;
   /** Secret for encryption */
   ENCRYPTION_KEY?: string;
+  /** Environment configuration */
+  ENVIRONMENT: string;
 }
 
 /**

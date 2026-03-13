@@ -9,17 +9,19 @@ import type { ApiKey } from "@/types/index.js";
 /**
  * Mock KV namespace.
  */
-class MockKVNamespace implements KVNamespace {
+// @ts-ignore - Mock doesn't need to implement full KVNamespace interface
+class MockKVNamespace {
   private store = new Map<string, { value: string; expiration?: number }>();
 
   async get(key: string): Promise<string | null>;
   async get(key: string, type: "text"): Promise<string | null>;
   async get(key: string, type: "json"): Promise<unknown>;
   async get(key: string, type: "stream"): Promise<ReadableStream | null>;
+  async get(key: string, type: "arrayBuffer"): Promise<ArrayBuffer | null>;
   async get(
     key: string,
     type?: string
-  ): Promise<string | null | ReadableStream | unknown> {
+  ): Promise<string | null | ReadableStream | ArrayBuffer | unknown> {
     const entry = this.store.get(key);
     if (!entry) return null;
 
@@ -35,6 +37,10 @@ class MockKVNamespace implements KVNamespace {
       } catch {
         return null;
       }
+    }
+
+    if (type === "arrayBuffer") {
+      return new TextEncoder().encode(entry.value).buffer;
     }
 
     return entry.value;
@@ -79,11 +85,11 @@ class MockKVNamespace implements KVNamespace {
     this.store.delete(key);
   }
 
-  async list(): Promise<KVNamespaceListResult> {
+  async list(): Promise<KVNamespaceListResult<string>> {
     throw new Error("Not implemented in mock");
   }
 
-  get withMetadata(): KVNamespaceWithMetadata {
+  get withMetadata(): any {
     throw new Error("Not implemented in mock");
   }
 }

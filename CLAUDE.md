@@ -36,10 +36,13 @@
 - 仅在系统边界进行校验（用户输入、外部 API）
 - 信任内部代码和框架保证
 
-### 代码风格
-- 使用 TypeScript 严格模式
-- 所有公共函数必须添加 JSDoc 注释
-- 导出的类型和接口必须有说明注释
+### Cloudflare Workers 限制
+
+#### Bundle 大小限制
+
+Worker 编译后的 WASM bundle 不得超过 **10 MB**。
+
+**原因**：Cloudflare Workers Paid 计划的硬限制为 10 MB（Free 计划仅 3 MB）。
 
 ### Git 工作流
 1. 完成功能开发

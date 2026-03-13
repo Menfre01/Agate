@@ -47,12 +47,12 @@
     }
   },
   "include": [
-    "src/**/*",
-    "tests/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    ".wrangler"
+    ".wrangler",
+    "tests/**/*"
   ]
 }

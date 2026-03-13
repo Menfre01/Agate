@@ -10,8 +10,6 @@
 import type {
   Model,
   ModelProvider,
-  Provider,
-  Department,
   CreateModelDto,
   UpdateModelDto,
   LinkModelProviderDto,
@@ -145,7 +143,6 @@ export class ModelService {
       context_window: dto.context_window,
       max_tokens: dto.max_tokens,
       is_active: dto.is_active,
-      updated_at: Date.now(),
     });
 
     return this.buildResponse(updated);

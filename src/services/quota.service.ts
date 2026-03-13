@@ -19,7 +19,6 @@ import type {
 } from "@/types/index.js";
 import * as queries from "@/db/queries.js";
 import { generateId } from "@/utils/id-generator.js";
-import { QuotaExceededError } from "@/utils/errors/index.js";
 
 /**
  * Quota check result.
@@ -325,8 +324,6 @@ export class QuotaService {
     companyId: string,
     tokens: number
   ): Promise<QuotaDeductionResult> {
-    const now = Date.now();
-
     // Deduct from API Key
     const apiKey = await queries.deductApiKeyQuota(this.db, apiKeyId, tokens);
 
@@ -400,6 +397,282 @@ export class QuotaService {
   }
 
   /**
+   * Sets quota value for an entity.
+   *
+   * @param entityType - Entity type (company, department, api_key)
+   * @param entityId - Entity ID
+   * @param quotaType - Quota type (pool or daily)
+   * @param value - New quota value
+   * @param reason - Reason for the change (optional)
+   * @param createdBy - User who made the change (optional)
+   */
+  async setQuota(
+    entityType: "company" | "department" | "api_key",
+    entityId: string,
+    quotaType: "pool" | "daily",
+    value: number,
+    reason?: string,
+    createdBy?: string
+  ): Promise<void> {
+    let entity: Company | Department | ApiKey | null;
+    let previousValue = 0;
+
+    switch (entityType) {
+      case "company": {
+        entity = await queries.getCompany(this.db, entityId);
+        if (!entity) {
+          throw new Error(`Company not found: ${entityId}`);
+        }
+        previousValue = quotaType === "pool" ? entity.quota_pool : entity.quota_daily;
+        const field = quotaType === "pool" ? "quota_pool" : "quota_daily";
+        await queries.updateCompany(this.db, entityId, { [field]: value });
+        break;
+      }
+      case "department": {
+        entity = await queries.getDepartment(this.db, entityId);
+        if (!entity) {
+          throw new Error(`Department not found: ${entityId}`);
+        }
+        previousValue = quotaType === "pool" ? entity.quota_pool : entity.quota_daily;
+        const field = quotaType === "pool" ? "quota_pool" : "quota_daily";
+        await queries.updateDepartment(this.db, entityId, { [field]: value });
+        break;
+      }
+      case "api_key": {
+        entity = await queries.getApiKey(this.db, entityId);
+        if (!entity) {
+          throw new Error(`API Key not found: ${entityId}`);
+        }
+        previousValue = entity.quota_daily;
+        await queries.updateApiKey(this.db, entityId, { quota_daily: value });
+        break;
+      }
+      default:
+        throw new Error(`Invalid entity type: ${entityType}`);
+    }
+
+    await this.recordQuotaChange(
+      entityType,
+      entityId,
+      "set",
+      value - previousValue,
+      previousValue,
+      value,
+      reason,
+      createdBy
+    );
+  }
+
+  /**
+   * Resets quota usage for an entity.
+   *
+   * Resets the used amount back to zero while preserving the quota limit.
+   *
+   * @param entityType - Entity type (company, department, api_key)
+   * @param entityId - Entity ID
+   * @param reason - Reason for the change (optional)
+   * @param createdBy - User who made the change (optional)
+   */
+  async resetQuota(
+    entityType: "company" | "department" | "api_key",
+    entityId: string,
+    reason?: string,
+    createdBy?: string
+  ): Promise<void> {
+    let entity: Company | Department | ApiKey | null;
+    let previousUsed = 0;
+
+    switch (entityType) {
+      case "company": {
+        entity = await queries.getCompany(this.db, entityId);
+        if (!entity) {
+          throw new Error(`Company not found: ${entityId}`);
+        }
+        previousUsed = entity.quota_used;
+        await queries.resetCompanyQuota(this.db, entityId);
+        break;
+      }
+      case "department": {
+        entity = await queries.getDepartment(this.db, entityId);
+        if (!entity) {
+          throw new Error(`Department not found: ${entityId}`);
+        }
+        previousUsed = entity.quota_used;
+        await queries.resetDepartmentQuota(this.db, entityId);
+        break;
+      }
+      case "api_key": {
+        entity = await queries.getApiKey(this.db, entityId);
+        if (!entity) {
+          throw new Error(`API Key not found: ${entityId}`);
+        }
+        previousUsed = entity.quota_used;
+        await queries.resetApiKeyQuota(this.db, entityId);
+        break;
+      }
+      default:
+        throw new Error(`Invalid entity type: ${entityType}`);
+    }
+
+    await this.recordQuotaChange(
+      entityType,
+      entityId,
+      "reset",
+      -previousUsed,
+      previousUsed,
+      0,
+      reason,
+      createdBy
+    );
+  }
+
+  /**
+   * Adds bonus quota to an entity.
+   *
+   * Bonus quota is added to the pool quota and can have an optional expiry.
+   *
+   * @param entityType - Entity type (company, department, api_key)
+   * @param entityId - Entity ID
+   * @param amount - Bonus amount to add
+   * @param expiry - Optional expiry timestamp (for api_key only)
+   * @param reason - Reason for the change (optional)
+   * @param createdBy - User who made the change (optional)
+   */
+  async addBonusQuota(
+    entityType: "company" | "department" | "api_key",
+    entityId: string,
+    amount: number,
+    expiry?: number,
+    reason?: string,
+    createdBy?: string
+  ): Promise<void> {
+    let entity: Company | Department | ApiKey | null;
+    let previousValue = 0;
+
+    switch (entityType) {
+      case "company": {
+        entity = await queries.getCompany(this.db, entityId);
+        if (!entity) {
+          throw new Error(`Company not found: ${entityId}`);
+        }
+        previousValue = entity.quota_pool;
+        await queries.updateCompany(this.db, entityId, {
+          quota_pool: entity.quota_pool + amount,
+        });
+        break;
+      }
+      case "department": {
+        entity = await queries.getDepartment(this.db, entityId);
+        if (!entity) {
+          throw new Error(`Department not found: ${entityId}`);
+        }
+        previousValue = entity.quota_pool;
+        await queries.updateDepartment(this.db, entityId, {
+          quota_pool: entity.quota_pool + amount,
+        });
+        break;
+      }
+      case "api_key": {
+        entity = await queries.getApiKey(this.db, entityId);
+        if (!entity) {
+          throw new Error(`API Key not found: ${entityId}`);
+        }
+        previousValue = entity.quota_bonus;
+        await queries.addApiKeyBonus(this.db, entityId, amount, expiry ?? undefined);
+        break;
+      }
+      default:
+        throw new Error(`Invalid entity type: ${entityType}`);
+    }
+
+    await this.recordQuotaChange(
+      entityType,
+      entityId,
+      "bonus",
+      amount,
+      previousValue,
+      previousValue + amount,
+      reason,
+      createdBy
+    );
+  }
+
+  /**
+   * Gets current quota information for an entity.
+   *
+   * @param entityType - Entity type
+   * @param entityId - Entity ID
+   * @returns Quota information
+   */
+  async getQuotaInfo(
+    entityType: "company" | "department" | "api_key",
+    entityId: string
+  ): Promise<{
+    entity_type: string;
+    entity_id: string;
+    entity_name: string;
+    quota_pool: number;
+    quota_used: number;
+    quota_daily: number;
+    daily_used: number;
+    last_reset_at: number | null;
+  }> {
+    switch (entityType) {
+      case "company": {
+        const company = await queries.getCompany(this.db, entityId);
+        if (!company) {
+          throw new Error(`Company not found: ${entityId}`);
+        }
+        return {
+          entity_type: "company",
+          entity_id: company.id,
+          entity_name: company.name,
+          quota_pool: company.quota_pool,
+          quota_used: company.quota_used,
+          quota_daily: company.quota_daily,
+          daily_used: company.daily_used,
+          last_reset_at: company.last_reset_at,
+        };
+      }
+      case "department": {
+        const department = await queries.getDepartment(this.db, entityId);
+        if (!department) {
+          throw new Error(`Department not found: ${entityId}`);
+        }
+        return {
+          entity_type: "department",
+          entity_id: department.id,
+          entity_name: department.name,
+          quota_pool: department.quota_pool,
+          quota_used: department.quota_used,
+          quota_daily: department.quota_daily,
+          daily_used: department.daily_used,
+          last_reset_at: department.last_reset_at,
+        };
+      }
+      case "api_key": {
+        const apiKey = await queries.getApiKey(this.db, entityId);
+        if (!apiKey) {
+          throw new Error(`API Key not found: ${entityId}`);
+        }
+        const user = await queries.getUser(this.db, apiKey.user_id);
+        return {
+          entity_type: "api_key",
+          entity_id: apiKey.id,
+          entity_name: apiKey.name ?? `${user?.email ?? "Unknown"}'s key`,
+          quota_pool: 0,
+          quota_used: 0,
+          quota_daily: apiKey.quota_daily,
+          daily_used: apiKey.quota_used,
+          last_reset_at: apiKey.last_reset_at,
+        };
+      }
+      default:
+        throw new Error(`Invalid entity type: ${entityType}`);
+    }
+  }
+
+  /**
    * Ensures daily quotas are reset if needed.
    *
    * @param apiKey - API Key entity
@@ -413,8 +686,6 @@ export class QuotaService {
     department: Department | null,
     company: Company
   ): Promise<void> {
-    const todayUtc = getTodayUtcZero();
-
     const resets = [
       checkAndResetQuota(this.db, "api_key", apiKey.id, apiKey.last_reset_at),
       checkAndResetQuota(this.db, "user", user.id, user.last_reset_at),

@@ -10,8 +10,6 @@
 import type {
   ApiKey,
   AuthContext,
-  User,
-  Company,
   Department,
   Env,
 } from "@/types/index.js";
@@ -45,7 +43,7 @@ export class AuthService {
    * @param env - Cloudflare Workers environment
    */
   constructor(env: Env) {
-    this.cache = new CacheService(env.CACHE);
+    this.cache = new CacheService(env.KV_CACHE);
     this.db = env.DB;
   }
 

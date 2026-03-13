@@ -14,16 +14,10 @@
 
 import type {
   AuthContext,
-  ApiKey,
-  User,
-  Company,
-  Department,
-  Model,
   ProxyMessageRequest,
   AnthropicUsage,
   Env,
 } from "@/types/index.js";
-import { AuthService } from "./auth.service.js";
 import { QuotaService } from "./quota.service.js";
 import { ProviderService } from "./provider.service.js";
 import { ModelService } from "./model.service.js";
@@ -81,7 +75,6 @@ export interface NonStreamingProxyResult extends ProxyResult {
  * ```
  */
 export class ProxyService {
-  private readonly authService: AuthService;
   private readonly quotaService: QuotaService;
   private readonly providerService: ProviderService;
   private readonly modelService: ModelService;
@@ -95,7 +88,6 @@ export class ProxyService {
    */
   constructor(env: Env) {
     this.db = env.DB;
-    this.authService = new AuthService(env);
     this.quotaService = new QuotaService(env);
     this.providerService = new ProviderService(env);
     this.modelService = new ModelService(env);
@@ -330,7 +322,7 @@ export class ProxyService {
     }
 
     try {
-      const data = await response.json();
+      const data = await response.json() as { usage?: AnthropicUsage };
       return data.usage ?? { input_tokens: 0, output_tokens: 0 };
     } catch {
       // Failed to parse - assume zero usage

@@ -7,196 +7,39 @@
  * @module db/queries
  */
 
+// Import entity types from types/index.ts to avoid duplication
+import type {
+  Company,
+  Department,
+  User,
+  Provider,
+  Model,
+  ModelProvider,
+  DepartmentModel,
+  ApiKey,
+  ProviderCredential,
+  UsageLog,
+  QuotaChange,
+} from "@/types/index.js";
+
+// Re-export entity types for backward compatibility
+export type {
+  Company,
+  Department,
+  User,
+  Provider,
+  Model,
+  ModelProvider,
+  DepartmentModel,
+  ApiKey,
+  ProviderCredential,
+  UsageLog,
+  QuotaChange,
+};
 
 // ============================================
-// Type Definitions
-// ============================================
-
-/**
- * Company entity representing an organization
- */
-export interface Company {
-  id: string;
-  name: string;
-  quota_pool: number;
-  quota_used: number;
-  quota_daily: number;
-  daily_used: number;
-  last_reset_at: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * Department entity representing a subdivision of a company
- */
-export interface Department {
-  id: string;
-  company_id: string;
-  name: string;
-  quota_pool: number;
-  quota_used: number;
-  quota_daily: number;
-  daily_used: number;
-  last_reset_at: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * User entity representing an individual user
- */
-export interface User {
-  id: string;
-  email: string;
-  name: string | null;
-  company_id: string;
-  department_id: string | null;
-  role: string;
-  quota_daily: number;
-  quota_used: number;
-  is_active: boolean;
-  last_reset_at: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * Provider entity representing an AI API provider
- */
-export interface Provider {
-  id: string;
-  name: string;
-  display_name: string;
-  base_url: string;
-  api_version: string | null;
-  is_active: boolean;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * Model entity representing an AI model
- */
-export interface Model {
-  id: string;
-  model_id: string;
-  display_name: string;
-  context_window: number;
-  max_tokens: number;
-  is_active: boolean;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * ModelProvider association entity
- */
-export interface ModelProvider {
-  id: string;
-  model_id: string;
-  provider_id: string;
-  input_price: number;
-  output_price: number;
-  priority: number;
-  is_active: boolean;
-  created_at: number;
-}
-
-/**
- * DepartmentModel configuration entity
- */
-export interface DepartmentModel {
-  id: string;
-  department_id: string;
-  model_id: string;
-  is_allowed: boolean;
-  daily_quota: number;
-  created_at: number;
-}
-
-/**
- * ApiKey entity for authentication
- */
-export interface ApiKey {
-  id: string;
-  key_hash: string;
-  key_prefix: string;
-  user_id: string;
-  company_id: string;
-  department_id: string | null;
-  name: string | null;
-  quota_daily: number;
-  quota_used: number;
-  quota_bonus: number;
-  quota_bonus_expiry: number | null;
-  is_unlimited: boolean;
-  is_active: boolean;
-  last_reset_at: number | null;
-  last_used_at: number | null;
-  expires_at: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * ProviderCredential entity for storing encrypted API keys
- */
-export interface ProviderCredential {
-  id: string;
-  provider_id: string;
-  credential_name: string;
-  api_key_encrypted: string;
-  is_active: boolean;
-  priority: number;
-  weight: number;
-  health_status: string;
-  last_health_check: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-/**
- * UsageLog entity for tracking API usage
- */
-export interface UsageLog {
-  id: string;
-  api_key_id: string;
-  user_id: string;
-  company_id: string;
-  department_id: string | null;
-  provider_id: string;
-  model_id: string;
-  model_name: string;
-  endpoint: string;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  status: string;
-  error_code: string | null;
-  request_id: string | null;
-  response_time_ms: number | null;
-  created_at: number;
-}
-
-/**
- * QuotaChange entity for tracking quota modifications
- */
-export interface QuotaChange {
-  id: string;
-  entity_type: string;
-  entity_id: string;
-  change_type: string;
-  change_amount: number;
-  previous_quota: number;
-  new_quota: number;
-  reason: string | null;
-  created_by: string | null;
-  created_at: number;
-}
-
-// ============================================
-// DTO Types for Create/Update Operations
+// Internal DTO Types (used only within queries.ts)
+// Note: These are for database operations, different from API DTOs in types/index.ts
 // ============================================
 
 export interface CreateCompanyDto {
@@ -250,7 +93,7 @@ export interface CreateProviderDto {
   name: string;
   display_name: string;
   base_url: string;
-  api_version?: string;
+  api_version?: string | null;
 }
 
 export interface UpdateProviderDto {
@@ -281,11 +124,11 @@ export interface CreateApiKeyDto {
   key_prefix: string;
   user_id: string;
   company_id: string;
-  department_id?: string;
-  name?: string;
+  department_id?: string | null;
+  name?: string | null;
   quota_daily?: number;
   is_unlimited?: boolean;
-  expires_at?: number;
+  expires_at?: number | null;
 }
 
 export interface UpdateApiKeyDto {
@@ -293,7 +136,8 @@ export interface UpdateApiKeyDto {
   quota_daily?: number;
   is_unlimited?: boolean;
   is_active?: boolean;
-  expires_at?: string;
+  expires_at?: number | null;
+  updated_at?: number;
 }
 
 export interface CreateUsageLogDto {
@@ -310,9 +154,9 @@ export interface CreateUsageLogDto {
   output_tokens: number;
   total_tokens: number;
   status: string;
-  error_code?: string;
-  request_id?: string;
-  response_time_ms?: number;
+  error_code?: string | null;
+  request_id?: string | null;
+  response_time_ms?: number | null;
 }
 
 export interface QuotaChangeDto {
@@ -323,8 +167,8 @@ export interface QuotaChangeDto {
   change_amount: number;
   previous_quota: number;
   new_quota: number;
-  reason?: string;
-  created_by?: string;
+  reason?: string | null;
+  created_by?: string | null;
 }
 
 // ============================================
@@ -337,23 +181,6 @@ export interface QuotaChangeDto {
 export interface Database extends D1Database {
   prepare(query: string): D1PreparedStatement;
 }
-
-// ============================================
-// Queries Class
-// ============================================
-
-/**
- * Database queries encapsulation class
- *
- * Provides type-safe CRUD operations for all entities.
- * All queries use prepared statements to prevent SQL injection.
- *
- * @example
- * ```ts
- * const queries = new Queries(env.DB);
- * const company = await queries.getCompany('comp_123');
- * ```
- */
 export class Queries {
   constructor(private db: D1Database) {}
 
@@ -1379,12 +1206,27 @@ export class Queries {
    * @param expiry - Expiry timestamp (optional)
    * @returns Updated API key object
    */
-  async addApiKeyBonus(id: string, amount: number, expiry?: number): Promise<ApiKey> {
+  async addApiKeyBonus(
+    id: string,
+    amountOrOptions: number | { amount: number; expires_at: number | null },
+    expiry?: number
+  ): Promise<ApiKey> {
+    let amount: number;
+    let expiresAt: number | null;
+
+    if (typeof amountOrOptions === 'object') {
+      amount = amountOrOptions.amount;
+      expiresAt = amountOrOptions.expires_at;
+    } else {
+      amount = amountOrOptions;
+      expiresAt = expiry ?? null;
+    }
+
     const result = await this.db
       .prepare(
         'UPDATE api_keys SET quota_bonus = quota_bonus + ?1, quota_bonus_expiry = ?2, updated_at = ?3 WHERE id = ?4'
       )
-      .bind(amount, expiry ?? null, Date.now(), id)
+      .bind(amount, expiresAt, Date.now(), id)
       .run();
 
     if (!result.success) {
@@ -1406,6 +1248,74 @@ export class Queries {
       .bind(id)
       .run();
     return result.success && (result.meta.rows_read ?? 0) > 0;
+  }
+
+  /**
+   * List API keys with optional filtering
+   *
+   * @param options - Query options
+   * @returns Array of API keys
+   */
+  async listApiKeys(options: {
+    user_id?: string;
+    company_id?: string;
+    department_id?: string;
+    is_active?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<ApiKey[]> {
+    const conditions: string[] = [];
+    const params: (string | number | boolean | null)[] = [];
+    let paramIndex = 1;
+
+    if (options.user_id !== undefined) {
+      conditions.push(`user_id = ?${paramIndex++}`);
+      params.push(options.user_id);
+    }
+    if (options.company_id !== undefined) {
+      conditions.push(`company_id = ?${paramIndex++}`);
+      params.push(options.company_id);
+    }
+    if (options.department_id !== undefined) {
+      conditions.push(`department_id = ?${paramIndex++}`);
+      params.push(options.department_id);
+    }
+    if (options.is_active !== undefined) {
+      conditions.push(`is_active = ?${paramIndex++}`);
+      params.push(options.is_active ? 1 : 0);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit ?? 100;
+    const offset = options.offset ?? 0;
+
+    const result = await this.db
+      .prepare(
+        `SELECT * FROM api_keys ${whereClause} ORDER BY created_at DESC LIMIT ?${paramIndex++} OFFSET ?${paramIndex++}`
+      )
+      .bind(...params, limit, offset)
+      .all<ApiKey>();
+    return result.results;
+  }
+
+  /**
+   * Reset API key quota usage
+   *
+   * @param id - API key ID
+   * @returns Updated API key object
+   */
+  async resetApiKeyQuota(id: string): Promise<ApiKey> {
+    const now = Date.now();
+    const result = await this.db
+      .prepare('UPDATE api_keys SET quota_used = 0, last_reset_at = ?1, updated_at = ?2 WHERE id = ?3')
+      .bind(now, now, id)
+      .run();
+
+    if (!result.success) {
+      throw new Error(`Failed to reset API key quota: ${result.error}`);
+    }
+
+    return this.getApiKey(id) as Promise<ApiKey>;
   }
 
   // ============================================
@@ -1712,3 +1622,588 @@ export class Queries {
     return result.success && (result.meta.rows_read ?? 0) > 0;
   }
 }
+
+// ============================================
+// Module-level function wrappers
+// ============================================
+
+/**
+ * Module-level cache for Queries instances
+ */
+const queriesCache = new WeakMap<D1Database, Queries>();
+
+/**
+ * Get or create a Queries instance for a database
+ */
+function getQueries(db: D1Database): Queries {
+  let instance = queriesCache.get(db);
+  if (!instance) {
+    instance = new Queries(db);
+    queriesCache.set(db, instance);
+  }
+  return instance;
+}
+
+// Company operations
+export const getCompany = (db: D1Database, id: string) => getQueries(db).getCompany(id);
+export const getCompanyByName = (db: D1Database, name: string) => getQueries(db).getCompanyByName(name);
+export const createCompany = (db: D1Database, data: CreateCompanyDto) => getQueries(db).createCompany(data);
+export const updateCompany = (db: D1Database, id: string, data: UpdateCompanyDto) =>
+  getQueries(db).updateCompany(id, data);
+export const listCompanies = (db: D1Database) => getQueries(db).listCompanies();
+export const deleteCompany = (db: D1Database, id: string) => getQueries(db).deleteCompany(id);
+
+// Department operations
+export const getDepartment = (db: D1Database, id: string) => getQueries(db).getDepartment(id);
+export const listDepartmentsByCompany = (db: D1Database, companyId: string) =>
+  getQueries(db).listDepartmentsByCompany(companyId);
+export const createDepartment = (db: D1Database, data: CreateDepartmentDto) =>
+  getQueries(db).createDepartment(data);
+export const updateDepartment = (db: D1Database, id: string, data: UpdateDepartmentDto) =>
+  getQueries(db).updateDepartment(id, data);
+export const deleteDepartment = (db: D1Database, id: string) => getQueries(db).deleteDepartment(id);
+
+// User operations
+export const getUser = (db: D1Database, id: string) => getQueries(db).getUser(id);
+export const getUserByEmail = (db: D1Database, email: string) => getQueries(db).getUserByEmail(email);
+export const listUsersByCompany = (db: D1Database, companyId: string) =>
+  getQueries(db).listUsersByCompany(companyId);
+export const createUser = (db: D1Database, data: CreateUserDto) => getQueries(db).createUser(data);
+export const updateUser = (db: D1Database, id: string, data: UpdateUserDto) =>
+  getQueries(db).updateUser(id, data);
+export const deleteUser = (db: D1Database, id: string) => getQueries(db).deleteUser(id);
+
+// Provider operations
+export const getProvider = (db: D1Database, id: string) => getQueries(db).getProvider(id);
+export const getProviderByName = (db: D1Database, name: string) => getQueries(db).getProviderByName(name);
+export const listActiveProviders = (db: D1Database) => getQueries(db).listActiveProviders();
+export const listProviders = (db: D1Database) => getQueries(db).listProviders();
+export const createProvider = (db: D1Database, data: CreateProviderDto) => getQueries(db).createProvider(data);
+export const updateProvider = (db: D1Database, id: string, data: UpdateProviderDto) =>
+  getQueries(db).updateProvider(id, data);
+export const deleteProvider = (db: D1Database, id: string) => getQueries(db).deleteProvider(id);
+
+// Model operations
+export const getModel = (db: D1Database, id: string) => getQueries(db).getModel(id);
+export const getModelByModelId = (db: D1Database, modelId: string) => getQueries(db).getModelByModelId(modelId);
+export const listActiveModels = (db: D1Database) => getQueries(db).listActiveModels();
+export const listModels = (db: D1Database) => getQueries(db).listModels();
+export const createModel = (db: D1Database, data: CreateModelDto) => getQueries(db).createModel(data);
+export const updateModel = (db: D1Database, id: string, data: UpdateModelDto) =>
+  getQueries(db).updateModel(id, data);
+export const deleteModel = (db: D1Database, id: string) => getQueries(db).deleteModel(id);
+
+// API Key operations
+export const getApiKeyByKeyHash = (db: D1Database, keyHash: string) =>
+  getQueries(db).getApiKeyByKeyHash(keyHash);
+export const getApiKey = (db: D1Database, id: string) => getQueries(db).getApiKey(id);
+export const listApiKeys = (
+  db: D1Database,
+  options: {
+    user_id?: string;
+    company_id?: string;
+    department_id?: string;
+    is_active?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {}
+) => getQueries(db).listApiKeys(options);
+export const createApiKey = (db: D1Database, data: CreateApiKeyDto) => getQueries(db).createApiKey(data);
+export const updateApiKey = (db: D1Database, id: string, data: UpdateApiKeyDto) =>
+  getQueries(db).updateApiKey(id, data);
+export const deleteApiKey = (db: D1Database, id: string) => getQueries(db).deleteApiKey(id);
+export const addApiKeyBonus = (
+  db: D1Database,
+  id: string,
+  amountOrOptions: number | { amount: number; expires_at: number | null },
+  expiry?: number
+) => getQueries(db).addApiKeyBonus(id, amountOrOptions, expiry);
+export const resetApiKeyQuota = (db: D1Database, id: string) => getQueries(db).resetApiKeyQuota(id);
+
+// Usage operations
+export const createUsageLog = (db: D1Database, data: CreateUsageLogDto) =>
+  getQueries(db).createUsageLog(data);
+export const recordQuotaChange = (db: D1Database, data: QuotaChangeDto) =>
+  getQueries(db).recordQuotaChange(data);
+export const getUsageByTimeRange = (db: D1Database, companyId: string, startDate: number, endDate: number) =>
+  getQueries(db).getUsageByTimeRange(companyId, startDate, endDate);
+export const getUsageByModel = (db: D1Database, companyId: string, startDate: number, endDate: number) =>
+  getQueries(db).getUsageByModel(companyId, startDate, endDate);
+export const getQuotaChanges = (db: D1Database, entityType: string, entityId: string) =>
+  getQueries(db).getQuotaChanges(entityType, entityId);
+export const resetDailyQuota = (db: D1Database, entityType: string, entityId: string, resetTime: number) =>
+  getQueries(db).resetDailyQuota(entityType, entityId, resetTime);
+
+// Additional model-provider operations
+export const getActiveProvidersForModel = (db: D1Database, modelId: string) =>
+  getQueries(db).getActiveProvidersForModel(modelId);
+export const associateModelProvider = (db: D1Database, data: {
+  id: string;
+  model_id: string;
+  provider_id: string;
+  input_price?: number;
+  output_price?: number;
+  priority?: number;
+}) => getQueries(db).associateModelProvider(data);
+export const listModelProvidersByModel = (db: D1Database, modelId: string) =>
+  getQueries(db).getActiveProvidersForModel(modelId);
+export const getModelProvider = (db: D1Database, modelId: string, providerId: string): any =>
+  getQueries(db).getActiveProvidersForModel(modelId).then(mps => mps.find(mp => mp.provider_id === providerId));
+export const createModelProvider = (db: D1Database, data: any) =>
+  getQueries(db).associateModelProvider(data);
+export const deleteModelProvider = async (db: D1Database, modelId: string, providerId: string): Promise<boolean> => {
+  const result = await db.prepare('DELETE FROM model_providers WHERE model_id = ?1 AND provider_id = ?2').bind(modelId, providerId).run();
+  return result.success && (result.meta.rows_read ?? 0) > 0;
+};
+
+// Department model operations
+export const getDepartmentModel = (db: D1Database, departmentId: string, modelId: string) =>
+  getQueries(db).getDepartmentModel(departmentId, modelId);
+export const listDepartmentModels = (db: D1Database, departmentId: string) =>
+  getQueries(db).listAllowedModelsForDepartment(departmentId);
+export const updateDepartmentModel = async (db: D1Database, id: string, data: {
+  is_allowed?: boolean;
+  daily_quota?: number;
+}): Promise<void> => {
+  const updates: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (data.is_allowed !== undefined) {
+    updates.push(`is_allowed = ?${paramIndex++}`);
+    params.push(data.is_allowed ? 1 : 0);
+  }
+  if (data.daily_quota !== undefined) {
+    updates.push(`daily_quota = ?${paramIndex++}`);
+    params.push(data.daily_quota);
+  }
+
+  if (updates.length === 0) return;
+
+  params.push(id);
+  await db.prepare(`UPDATE department_models SET ${updates.join(', ')} WHERE id = ?${paramIndex}`).bind(...params).run();
+};
+export const createDepartmentModel = (db: D1Database, data: any) =>
+  getQueries(db).setDepartmentModelAccess(data);
+
+// Provider credential operations
+export const listProviderCredentials = (db: D1Database, providerId: string) =>
+  getQueries(db).getActiveCredentialsForProvider(providerId);
+export const getProviderCredential = (db: D1Database, id: string) =>
+  getQueries(db).getCredential(id);
+export const createProviderCredential = (db: D1Database, data: any) =>
+  getQueries(db).createCredential(data);
+export const deleteProviderCredential = async (db: D1Database, id: string): Promise<boolean> => {
+  const result = await db.prepare('DELETE FROM provider_credentials WHERE id = ?1').bind(id).run();
+  return result.success && (result.meta.rows_read ?? 0) > 0;
+};
+export const updateCredentialHealth = (db: D1Database, id: string, status: string) =>
+  getQueries(db).updateCredentialHealth(id, status);
+
+// Quota operations
+export const resetUserQuota = async (db: D1Database, userId: string): Promise<void> => {
+  await db.prepare('UPDATE users SET quota_used = 0, last_reset_at = ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(Date.now(), Date.now(), userId).run();
+};
+export const resetDepartmentQuota = async (db: D1Database, departmentId: string): Promise<void> => {
+  await db.prepare('UPDATE departments SET daily_used = 0, quota_used = 0, last_reset_at = ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(Date.now(), Date.now(), departmentId).run();
+};
+export const resetCompanyQuota = async (db: D1Database, companyId: string): Promise<void> => {
+  await db.prepare('UPDATE companies SET daily_used = 0, quota_used = 0, last_reset_at = ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(Date.now(), Date.now(), companyId).run();
+};
+export const deductApiKeyQuota = async (db: D1Database, apiKeyId: string, amount: number): Promise<ApiKey> => {
+  await db.prepare('UPDATE api_keys SET quota_used = quota_used + ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(amount, Date.now(), apiKeyId).run();
+  const result = await db.prepare('SELECT * FROM api_keys WHERE id = ?1').bind(apiKeyId).first<ApiKey>();
+  if (!result) throw new Error(`API Key not found after deduction: ${apiKeyId}`);
+  return result;
+};
+export const deductUserQuota = async (db: D1Database, userId: string, amount: number): Promise<User> => {
+  await db.prepare('UPDATE users SET quota_used = quota_used + ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(amount, Date.now(), userId).run();
+  const result = await db.prepare('SELECT * FROM users WHERE id = ?1').bind(userId).first<User>();
+  if (!result) throw new Error(`User not found after deduction: ${userId}`);
+  return result;
+};
+export const deductDepartmentDailyQuota = async (db: D1Database, departmentId: string, amount: number): Promise<Department> => {
+  await db.prepare('UPDATE departments SET daily_used = daily_used + ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(amount, Date.now(), departmentId).run();
+  const result = await db.prepare('SELECT * FROM departments WHERE id = ?1').bind(departmentId).first<Department>();
+  if (!result) throw new Error(`Department not found after deduction: ${departmentId}`);
+  return result;
+};
+export const deductDepartmentMixedQuota = async (db: D1Database, departmentId: string, dailyAmount: number, poolAmount: number): Promise<Department> => {
+  await db.prepare('UPDATE departments SET quota_used = quota_used + ?1, daily_used = daily_used + ?2, updated_at = ?3 WHERE id = ?4')
+    .bind(poolAmount, dailyAmount, Date.now(), departmentId).run();
+  const result = await db.prepare('SELECT * FROM departments WHERE id = ?1').bind(departmentId).first<Department>();
+  if (!result) throw new Error(`Department not found after deduction: ${departmentId}`);
+  return result;
+};
+export const deductCompanyDailyQuota = async (db: D1Database, companyId: string, amount: number): Promise<Company> => {
+  await db.prepare('UPDATE companies SET daily_used = daily_used + ?1, updated_at = ?2 WHERE id = ?3')
+    .bind(amount, Date.now(), companyId).run();
+  const result = await db.prepare('SELECT * FROM companies WHERE id = ?1').bind(companyId).first<Company>();
+  if (!result) throw new Error(`Company not found after deduction: ${companyId}`);
+  return result;
+};
+export const deductCompanyMixedQuota = async (db: D1Database, companyId: string, dailyAmount: number, poolAmount: number): Promise<Company> => {
+  await db.prepare('UPDATE companies SET quota_used = quota_used + ?1, daily_used = daily_used + ?2, updated_at = ?3 WHERE id = ?4')
+    .bind(poolAmount, dailyAmount, Date.now(), companyId).run();
+  const result = await db.prepare('SELECT * FROM companies WHERE id = ?1').bind(companyId).first<Company>();
+  if (!result) throw new Error(`Company not found after deduction: ${companyId}`);
+  return result;
+};
+export const createQuotaChange = (db: D1Database, data: QuotaChangeDto) =>
+  getQueries(db).recordQuotaChange(data);
+
+// Usage query operations
+export const queryUsageLogs = async (db: D1Database, options: {
+  api_key_id?: string;
+  user_id?: string;
+  company_id?: string;
+  department_id?: string;
+  model_id?: string;
+  status?: string;
+  start_at?: number;
+  end_at?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<{ logs: UsageLog[]; total: number }> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.api_key_id) {
+    conditions.push(`api_key_id = ?${paramIndex++}`);
+    params.push(options.api_key_id);
+  }
+  if (options.user_id) {
+    conditions.push(`user_id = ?${paramIndex++}`);
+    params.push(options.user_id);
+  }
+  if (options.company_id) {
+    conditions.push(`company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.department_id) {
+    conditions.push(`department_id = ?${paramIndex++}`);
+    params.push(options.department_id);
+  }
+  if (options.model_id) {
+    conditions.push(`model_id = ?${paramIndex++}`);
+    params.push(options.model_id);
+  }
+  if (options.status) {
+    conditions.push(`status = ?${paramIndex++}`);
+    params.push(options.status);
+  }
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = options.limit ?? 100;
+  const offset = options.offset ?? 0;
+
+  // First get count
+  const countResult = await db
+    .prepare(`SELECT COUNT(*) as count FROM usage_logs ${whereClause}`)
+    .bind(...params)
+    .first<{ count: number }>();
+  const total = countResult?.count ?? 0;
+
+  // Then get the data
+  const result = await db
+    .prepare(`SELECT * FROM usage_logs ${whereClause} ORDER BY created_at DESC LIMIT ?${paramIndex++} OFFSET ?${paramIndex++}`)
+    .bind(...params, limit, offset)
+    .all<UsageLog>();
+
+  return { logs: result.results, total };
+};
+export const getUsageStats = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+  department_id?: string;
+  user_id?: string;
+  model_id?: string;
+}): Promise<any> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+  if (options.department_id) {
+    conditions.push(`department_id = ?${paramIndex++}`);
+    params.push(options.department_id);
+  }
+  if (options.user_id) {
+    conditions.push(`user_id = ?${paramIndex++}`);
+    params.push(options.user_id);
+  }
+  if (options.model_id) {
+    conditions.push(`model_id = ?${paramIndex++}`);
+    params.push(options.model_id);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT COUNT(*) as total_requests, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause}`
+  ).bind(...params).first();
+  return result;
+};
+export const getUsageStatsGrouped = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+  department_id?: string;
+  user_id?: string;
+  model_id?: string;
+  group_by: string;
+}): Promise<any[]> => {
+  const column = options.group_by === 'model' ? 'model_id' : options.group_by === 'user' ? 'user_id' : 'provider_id';
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+  if (options.department_id) {
+    conditions.push(`department_id = ?${paramIndex++}`);
+    params.push(options.department_id);
+  }
+  if (options.user_id) {
+    conditions.push(`user_id = ?${paramIndex++}`);
+    params.push(options.user_id);
+  }
+  if (options.model_id) {
+    conditions.push(`model_id = ?${paramIndex++}`);
+    params.push(options.model_id);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT ${column} as group_key, COUNT(*) as request_count, SUM(total_tokens) as total_tokens, SUM(total_tokens * 0.00001) as estimated_cost FROM usage_logs ${whereClause} GROUP BY ${column}`
+  ).bind(...params).all();
+  return result.results;
+};
+export const getTokenUsageSummary = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+  department_id?: string;
+  user_id?: string;
+}): Promise<any> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.department_id) {
+    conditions.push(`department_id = ?${paramIndex++}`);
+    params.push(options.department_id);
+  }
+  if (options.user_id) {
+    conditions.push(`user_id = ?${paramIndex++}`);
+    params.push(options.user_id);
+  }
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause}`
+  ).bind(...params).first();
+  return result;
+};
+export const getTokenUsageByModel = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+  department_id?: string;
+  user_id?: string;
+}): Promise<any[]> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.department_id) {
+    conditions.push(`department_id = ?${paramIndex++}`);
+    params.push(options.department_id);
+  }
+  if (options.user_id) {
+    conditions.push(`user_id = ?${paramIndex++}`);
+    params.push(options.user_id);
+  }
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT model_id, model_name, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens, COUNT(*) as request_count FROM usage_logs ${whereClause} GROUP BY model_id, model_name ORDER BY total_tokens DESC`
+  ).bind(...params).all();
+  return result.results;
+};
+export const getTotalCost = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+}): Promise<{ total_cost: number }> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`u.company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.start_at) {
+    conditions.push(`u.created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`u.created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT SUM(u.total_tokens * COALESCE(mp.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN model_providers mp ON u.model_id = mp.model_id ${whereClause}`
+  ).bind(...params).first<{ total_cost: number }>();
+  return { total_cost: result?.total_cost ?? 0 };
+};
+export const getCostByModel = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+}): Promise<any[]> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`u.company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.start_at) {
+    conditions.push(`u.created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`u.created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT u.model_id, u.model_name, SUM(u.input_tokens * COALESCE(mp.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(mp.output_price, 0) / 1000) as output_cost, SUM(u.total_tokens * COALESCE(mp.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN model_providers mp ON u.model_id = mp.model_id ${whereClause} GROUP BY u.model_id, u.model_name`
+  ).bind(...params).all();
+  return result.results;
+};
+export const getCostByProvider = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+}): Promise<any[]> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`u.company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.start_at) {
+    conditions.push(`u.created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`u.created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT p.id as provider_id, p.name as provider_name, SUM(u.total_tokens * COALESCE(mp.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN model_providers mp ON u.model_id = mp.model_id LEFT JOIN providers p ON mp.provider_id = p.id ${whereClause} GROUP BY p.id, p.name`
+  ).bind(...params).all();
+  return result.results;
+};
+export const getModelStats = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+}): Promise<any[]> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT model_id, model_name, COUNT(*) as requests, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause} GROUP BY model_id, model_name ORDER BY total_tokens DESC`
+  ).bind(...params).all();
+  return result.results;
+};
+export const updateApiKeyLastUsed = (db: D1Database, apiKeyId: string) =>
+  getQueries(db).updateApiKeyLastUsed(apiKeyId);

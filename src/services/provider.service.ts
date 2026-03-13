@@ -10,8 +10,6 @@
 import type {
   Provider,
   ProviderCredential,
-  Model,
-  ModelProvider,
   CreateProviderDto,
   UpdateProviderDto,
   AddProviderCredentialDto,
@@ -184,7 +182,6 @@ export class ProviderService {
       base_url: dto.base_url,
       api_version: dto.api_version,
       is_active: dto.is_active,
-      updated_at: Date.now(),
     });
 
     const credentials = await queries.listProviderCredentials(this.db, id);
@@ -317,10 +314,7 @@ export class ProviderService {
     credentialId: string,
     status: "healthy" | "unhealthy" | "unknown"
   ): Promise<void> {
-    await queries.updateCredentialHealth(this.db, credentialId, {
-      health_status: status,
-      last_health_check: Date.now(),
-    });
+    await queries.updateCredentialHealth(this.db, credentialId, status);
   }
 
   /**
@@ -475,7 +469,7 @@ export class ProviderService {
    */
   private consistentHash(values: string[], seed: string): string {
     // Combine seed with each value and pick the one with highest hash
-    let bestValue = values[0];
+    let bestValue: string | undefined = values[0];
     let bestHash = BigInt(0);
 
     for (const value of values) {
@@ -487,7 +481,7 @@ export class ProviderService {
       }
     }
 
-    return bestValue;
+    return bestValue!;
   }
 
   /**
@@ -498,7 +492,7 @@ export class ProviderService {
    * @returns Selected object
    */
   private consistentHashObject<T>(objects: T[], seed: string): T {
-    let bestObject = objects[0];
+    let bestObject: T | undefined = objects[0];
     let bestHash = BigInt(0);
 
     for (const obj of objects) {
@@ -510,7 +504,7 @@ export class ProviderService {
       }
     }
 
-    return bestObject;
+    return bestObject!;
   }
 
   /**
