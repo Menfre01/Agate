@@ -7,11 +7,15 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --config wrangler.prod.jsonc",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "smoke-test": "bash scripts/smoke-test.sh",
     "db:migrate": "wrangler d1 execute ai-gateway-db --file=./src/db/schema.sql",
     "db:migrate:local": "wrangler d1 execute ai-gateway-db --file=./src/db/schema.sql --local",
+    "db:seed": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql",
+    "db:seed:local": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql --local",
     "db:query": "wrangler d1 execute ai-gateway-db --command",
     "db:query:local": "wrangler d1 execute ai-gateway-db --command --local",
     "typecheck": "tsc --noEmit"
