@@ -846,3 +846,95 @@ flowchart TB
 4. 测试 `/v1/messages` 代理
 5. 检查用量统计
 6. `npm run deploy` - 部署
+
+---
+
+## 9. 实现进度跟踪
+
+### Wave 0: 项目基础 ✅ 完成
+
+| 任务 | 文件 | 状态 | 说明 |
+|------|------|------|------|
+| 基础配置 | `package.json` | ✅ | 依赖、脚本配置 |
+| 运行时配置 | `wrangler.jsonc` | ✅ | Workers/D1/KV 绑定 |
+| 类型配置 | `tsconfig.json` | ✅ | 路径别名、严格模式 |
+| 目录结构 | `src/`, `tests/` | ✅ | 8 个目录 |
+| 入口文件 | `src/index.ts` | ✅ | 健康检查端点 |
+| 测试配置 | `vitest.config.ts` | ✅ | Vitest 配置 |
+
+**验收**: ✅ `npm run dev` 可启动
+
+---
+
+### Wave 1: 数据与类型 ✅ 完成
+
+| 任务组 | 任务 | 文件 | 状态 |
+|--------|------|------|------|
+| **类型定义** | 实体、DTO、错误类型 | `src/types/index.ts` | ✅ 63 个类型 |
+| **数据库层** | 表结构 | `src/db/schema.sql` | ✅ 11 张表 + 36 索引 |
+| | 查询封装 | `src/db/queries.ts` | ✅ 55 个方法 |
+| **工具函数** | 加密工具 | `src/utils/crypto.ts` | ✅ 3 个函数 |
+| | ID 生成 | `src/utils/id-generator.ts` | ✅ 3 个函数 |
+| | 错误类 | `src/utils/errors/index.ts` | ✅ 8 个类 |
+
+**验收**: ✅ 62 个单元测试全部通过
+
+---
+
+### Wave 2: 核心服务 ⏳ 待开始
+
+| 服务 | 文件 | 状态 |
+|------|------|------|
+| CacheService | `src/services/cache.service.ts` | ⏳ |
+| AuthService | `src/services/auth.service.ts` | ⏳ |
+| KeyService | `src/services/key.service.ts` | ⏳ |
+| QuotaService | `src/services/quota.service.ts` | ⏳ |
+| ProviderService | `src/services/provider.service.ts` | ⏳ |
+| ModelService | `src/services/model.service.ts` | ⏳ |
+| UsageService | `src/services/usage.service.ts` | ⏳ |
+| ProxyService | `src/services/proxy.service.ts` | ⏳ |
+
+---
+
+### Wave 3: API 集成 ⏳ 待开始
+
+| 分组 | 任务 | 文件 | 状态 |
+|------|------|------|------|
+| **中间件** | 认证 | `src/middleware/auth.ts` | ⏳ |
+| | 限流 | `src/middleware/ratelimit.ts` | ⏳ |
+| | 日志 | `src/middleware/logger.ts` | ⏳ |
+| **代理 API** | 消息代理 | `src/api/proxy/anthropic.ts` | ⏳ |
+| | 模型列表 | `src/api/proxy/models.ts` | ⏳ |
+| **管理 API** | API Key 管理 | `src/api/admin/keys.ts` | ⏳ |
+| | 供应商管理 | `src/api/admin/providers.ts` | ⏳ |
+| | 模型管理 | `src/api/admin/models.ts` | ⏳ |
+| | 统计分析 | `src/api/admin/stats.ts` | ⏳ |
+| | 配额管理 | `src/api/admin/quotas.ts` | ⏳ |
+
+---
+
+### Wave 4: 部署上线 ⏳ 待开始
+
+| 任务 | 状态 |
+|------|------|
+| 路由入口聚合 | ⏳ |
+| 数据库迁移 | ⏳ |
+| 部署配置 | ⏳ |
+| 生产部署 | ⏳ |
+| 冒烟测试 | ⏳ |
+
+---
+
+### 总体进度
+
+```
+Wave 0 ████████████████████ 100% ✅
+Wave 1 ████████████████████ 100% ✅
+Wave 2 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
+Wave 3 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
+Wave 4 ░░░░░░░░░░░░░░░░░░░░   0% ⏳
+----------------------------
+总体  ████░░░░░░░░░░░░░░░░  40%
+```
+
+**最后更新**: 2026-03-13
