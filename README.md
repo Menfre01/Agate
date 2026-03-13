@@ -6,6 +6,8 @@
 
 # Agate — Your AI Gateway
 
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+
 A multi-tenant AI API gateway built on Cloudflare Workers with provider management, model management, API key management, and quota analytics.
 
 [Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [License](#license)

@@ -6,6 +6,8 @@ English
 
 # Agate — 你的 AI 网关
 
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+
 一个基于 Cloudflare Workers 的多租户 AI API 网关，提供供应商管理、模型管理、API Key 管理和配额统计功能。
 
 [特性](#特性) • [快速开始](#快速开始) • [文档](#文档) • [许可证](#许可证)
