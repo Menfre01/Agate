@@ -14,7 +14,6 @@ import type {
   User,
   Provider,
   Model,
-  ModelProvider,
   DepartmentModel,
   ApiKey,
   ProviderCredential,
@@ -29,7 +28,6 @@ export type {
   User,
   Provider,
   Model,
-  ModelProvider,
   DepartmentModel,
   ApiKey,
   ProviderCredential,
@@ -107,6 +105,9 @@ export interface CreateModelDto {
   id: string;
   model_id: string;
   display_name: string;
+  provider_id: string;
+  input_price?: number;
+  output_price?: number;
   context_window?: number;
   max_tokens?: number;
 }
@@ -837,13 +838,17 @@ export class Queries {
     const result = await this.db
       .prepare(
         `INSERT INTO models (
-          id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+          id, model_id, display_name, provider_id, input_price, output_price,
+          context_window, max_tokens, is_active, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
       )
       .bind(
         data.id,
         data.model_id,
         data.display_name,
+        data.provider_id,
+        data.input_price ?? 0,
+        data.output_price ?? 0,
         data.context_window ?? 0,
         data.max_tokens ?? 0,
         true,
@@ -914,73 +919,6 @@ export class Queries {
       .bind(id)
       .run();
     return result.success && (result.meta.rows_read ?? 0) > 0;
-  }
-
-  // ============================================
-  // ModelProvider Operations
-  // ============================================
-
-  /**
-   * Get active providers for a model
-   *
-   * @param modelId - Model ID
-   * @returns Array of model-provider associations
-   */
-  async getActiveProvidersForModel(modelId: string): Promise<ModelProvider[]> {
-    const result = await this.db
-      .prepare(
-        `SELECT * FROM model_providers
-         WHERE model_id = ?1 AND is_active = 1
-         ORDER BY priority DESC`
-      )
-      .bind(modelId)
-      .all<ModelProvider>();
-    return result.results;
-  }
-
-  /**
-   * Associate a model with a provider
-   *
-   * @param data - ModelProvider creation data
-   * @returns Created association
-   */
-  async associateModelProvider(data: {
-    id: string;
-    model_id: string;
-    provider_id: string;
-    input_price?: number;
-    output_price?: number;
-    priority?: number;
-  }): Promise<ModelProvider> {
-    const now = Date.now();
-    const result = await this.db
-      .prepare(
-        `INSERT INTO model_providers (
-          id, model_id, provider_id, input_price, output_price, priority, is_active, created_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-      )
-      .bind(
-        data.id,
-        data.model_id,
-        data.provider_id,
-        data.input_price ?? 0,
-        data.output_price ?? 0,
-        data.priority ?? 0,
-        true,
-        now
-      )
-      .run();
-
-    if (!result.success) {
-      throw new Error(`Failed to associate model with provider: ${result.error}`);
-    }
-
-    const mp = await this.db
-      .prepare('SELECT * FROM model_providers WHERE id = ?1')
-      .bind(data.id)
-      .first<ModelProvider>();
-
-    return mp as ModelProvider;
   }
 
   // ============================================
@@ -1776,28 +1714,6 @@ export const getQuotaChanges = (db: D1Database, entityType: string, entityId: st
 export const resetDailyQuota = (db: D1Database, entityType: string, entityId: string, resetTime: number) =>
   getQueries(db).resetDailyQuota(entityType, entityId, resetTime);
 
-// Additional model-provider operations
-export const getActiveProvidersForModel = (db: D1Database, modelId: string) =>
-  getQueries(db).getActiveProvidersForModel(modelId);
-export const associateModelProvider = (db: D1Database, data: {
-  id: string;
-  model_id: string;
-  provider_id: string;
-  input_price?: number;
-  output_price?: number;
-  priority?: number;
-}) => getQueries(db).associateModelProvider(data);
-export const listModelProvidersByModel = (db: D1Database, modelId: string) =>
-  getQueries(db).getActiveProvidersForModel(modelId);
-export const getModelProvider = (db: D1Database, modelId: string, providerId: string): any =>
-  getQueries(db).getActiveProvidersForModel(modelId).then(mps => mps.find(mp => mp.provider_id === providerId));
-export const createModelProvider = (db: D1Database, data: any) =>
-  getQueries(db).associateModelProvider(data);
-export const deleteModelProvider = async (db: D1Database, modelId: string, providerId: string): Promise<boolean> => {
-  const result = await db.prepare('DELETE FROM model_providers WHERE model_id = ?1 AND provider_id = ?2').bind(modelId, providerId).run();
-  return result.success && (result.meta.rows_read ?? 0) > 0;
-};
-
 // Department model operations
 export const getDepartmentModel = (db: D1Database, departmentId: string, modelId: string) =>
   getQueries(db).getDepartmentModel(departmentId, modelId);
@@ -2159,7 +2075,7 @@ export const getTotalCost = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT SUM(u.total_tokens * COALESCE(mp.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN model_providers mp ON u.model_id = mp.model_id ${whereClause}`
+    `SELECT SUM(u.total_tokens * COALESCE(m.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN models m ON u.model_id = m.id ${whereClause}`
   ).bind(...params).first<{ total_cost: number }>();
   return { total_cost: result?.total_cost ?? 0 };
 };
@@ -2187,7 +2103,7 @@ export const getCostByModel = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT u.model_id, u.model_name, SUM(u.input_tokens * COALESCE(mp.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(mp.output_price, 0) / 1000) as output_cost, SUM(u.total_tokens * COALESCE(mp.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN model_providers mp ON u.model_id = mp.model_id ${whereClause} GROUP BY u.model_id, u.model_name`
+    `SELECT u.model_id, u.model_name, SUM(u.input_tokens * COALESCE(m.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(m.output_price, 0) / 1000) as output_cost, SUM(u.input_tokens * COALESCE(m.input_price, 0) / 1000 + u.output_tokens * COALESCE(m.output_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN models m ON u.model_id = m.id ${whereClause} GROUP BY u.model_id, u.model_name`
   ).bind(...params).all();
   return result.results;
 };
@@ -2215,7 +2131,7 @@ export const getCostByProvider = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT p.id as provider_id, p.name as provider_name, SUM(u.total_tokens * COALESCE(mp.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN model_providers mp ON u.model_id = mp.model_id LEFT JOIN providers p ON mp.provider_id = p.id ${whereClause} GROUP BY p.id, p.name`
+    `SELECT p.id as provider_id, p.name as provider_name, SUM((u.input_tokens * COALESCE(m.input_price, 0) + u.output_tokens * COALESCE(m.output_price, 0)) / 1000) as total_cost FROM usage_logs u LEFT JOIN models m ON u.model_id = m.id LEFT JOIN providers p ON m.provider_id = p.id ${whereClause} GROUP BY p.id, p.name`
   ).bind(...params).all();
   return result.results;
 };

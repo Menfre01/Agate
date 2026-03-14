@@ -321,10 +321,9 @@ export class ProviderService {
    * Selects a credential for a model request using consistent hashing.
    *
    * Selection process:
-   * 1. Get all providers that support the model
-   * 2. Hash by apiKeyId to select provider
-   * 3. Get active credentials for selected provider
-   * 4. Hash by apiKeyId to select credential
+   * 1. Get the model's provider_id
+   * 2. Get active credentials for that provider
+   * 3. Hash by apiKeyId to select credential
    *
    * @param modelId - Model ID
    * @param apiKeyId - API Key ID for consistent hashing
@@ -335,32 +334,18 @@ export class ProviderService {
     modelId: string,
     apiKeyId: string
   ): Promise<SelectedCredential> {
-    // Get all providers that support this model
-    const modelProviders = await queries.listModelProvidersByModel(
-      this.db,
-      modelId
-    );
-
-    if (modelProviders.length === 0) {
-      throw new NotFoundError("Model providers", modelId);
+    // Get the model to find its provider
+    const model = await queries.getModel(this.db, modelId);
+    if (!model) {
+      throw new NotFoundError("Model", modelId);
     }
 
-    // Filter to active providers
-    const activeProviderIds = modelProviders
-      .filter((mp) => mp.is_active)
-      .map((mp) => mp.provider_id);
-
-    if (activeProviderIds.length === 0) {
-      throw new Error("No active providers found for model");
-    }
-
-    // Select provider using consistent hash
-    const providerId = this.consistentHash(activeProviderIds, apiKeyId);
+    const providerId = model.provider_id;
 
     // Get provider details
     const provider = await queries.getProvider(this.db, providerId);
     if (!provider || !provider.is_active) {
-      throw new Error("Selected provider is not active");
+      throw new Error("Provider not found or inactive");
     }
 
     // Get active credentials for provider
@@ -458,30 +443,6 @@ export class ProviderService {
     );
 
     return new TextDecoder().decode(decrypted);
-  }
-
-  /**
-   * Consistent hash selection from an array of strings.
-   *
-   * @param values - Array of values to select from
-   * @param seed - Seed value for hashing
-   * @returns Selected value
-   */
-  private consistentHash(values: string[], seed: string): string {
-    // Combine seed with each value and pick the one with highest hash
-    let bestValue: string | undefined = values[0];
-    let bestHash = BigInt(0);
-
-    for (const value of values) {
-      const combined = `${seed}:${value}`;
-      const hash = this.hashCode(combined);
-      if (hash > bestHash) {
-        bestHash = hash;
-        bestValue = value;
-      }
-    }
-
-    return bestValue!;
   }
 
   /**

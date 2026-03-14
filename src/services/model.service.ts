@@ -9,10 +9,8 @@
 
 import type {
   Model,
-  ModelProvider,
   CreateModelDto,
   UpdateModelDto,
-  LinkModelProviderDto,
   ModelResponse,
   SetDepartmentModelDto,
   DepartmentModelResponse,
@@ -107,11 +105,20 @@ export class ModelService {
       });
     }
 
+    // Verify provider exists
+    const provider = await queries.getProvider(this.db, dto.provider_id);
+    if (!provider) {
+      throw new NotFoundError("Provider", dto.provider_id);
+    }
+
     const now = Date.now();
     const model: Model = {
       id: generateId(),
       model_id: dto.model_id,
       display_name: dto.display_name,
+      provider_id: dto.provider_id,
+      input_price: dto.input_price ?? 0,
+      output_price: dto.output_price ?? 0,
       context_window: dto.context_window ?? 0,
       max_tokens: dto.max_tokens ?? 0,
       is_active: true,
@@ -160,83 +167,7 @@ export class ModelService {
       throw new NotFoundError("Model", id);
     }
 
-    // Check if model has active provider links
-    const providers = await queries.listModelProvidersByModel(this.db, id);
-    if (providers.length > 0) {
-      throw new ValidationError(
-        "Cannot delete model with active provider links",
-        { provider_count: String(providers.length) }
-      );
-    }
-
     await queries.deleteModel(this.db, id);
-  }
-
-  /**
-   * Links a model to a provider.
-   *
-   * @param modelId - Model ID
-   * @param dto - Link data
-   * @returns Updated model response
-   * @throws {NotFoundError} If model or provider not found
-   */
-  async linkProvider(
-    modelId: string,
-    dto: LinkModelProviderDto
-  ): Promise<ModelResponse> {
-    const model = await queries.getModel(this.db, modelId);
-    if (!model) {
-      throw new NotFoundError("Model", modelId);
-    }
-
-    const provider = await queries.getProvider(this.db, dto.provider_id);
-    if (!provider) {
-      throw new NotFoundError("Provider", dto.provider_id);
-    }
-
-    // Check if link already exists
-    const existing = await queries.getModelProvider(
-      this.db,
-      modelId,
-      dto.provider_id
-    );
-    if (existing) {
-      throw new ValidationError("Model already linked to this provider", {
-        provider_id: dto.provider_id,
-      });
-    }
-
-    const now = Date.now();
-    const link: ModelProvider = {
-      id: generateId(),
-      model_id: modelId,
-      provider_id: dto.provider_id,
-      input_price: dto.input_price,
-      output_price: dto.output_price,
-      priority: dto.priority ?? 0,
-      is_active: true,
-      created_at: now,
-    };
-
-    await queries.createModelProvider(this.db, link);
-
-    return this.buildResponse(model);
-  }
-
-  /**
-   * Unlinks a model from a provider.
-   *
-   * @param modelId - Model ID
-   * @param providerId - Provider ID
-   * @throws {NotFoundError} If link not found
-   */
-  async unlinkProvider(modelId: string, providerId: string): Promise<void> {
-    const link = await queries.getModelProvider(this.db, modelId, providerId);
-    if (!link) {
-      throw new NotFoundError("Model-Provider link", `${modelId}-${providerId}`);
-    }
-
-    await queries.deleteModelProvider(this.db, modelId, providerId);
   }
 
   /**
@@ -395,32 +326,19 @@ export class ModelService {
    * @returns Model response DTO
    */
   private async buildResponse(model: Model): Promise<ModelResponse> {
-    const modelProviders = await queries.listModelProvidersByModel(
-      this.db,
-      model.id
-    );
-
-    const providers = await Promise.all(
-      modelProviders.map(async (mp) => {
-        const provider = await queries.getProvider(this.db, mp.provider_id);
-        return {
-          provider_id: mp.provider_id,
-          provider_name: provider?.name ?? "",
-          input_price: mp.input_price,
-          output_price: mp.output_price,
-          priority: mp.priority,
-        };
-      })
-    );
+    const provider = await queries.getProvider(this.db, model.provider_id);
 
     return {
       id: model.id,
       model_id: model.model_id,
       display_name: model.display_name,
+      provider_id: model.provider_id,
+      provider_name: provider?.name ?? "",
+      input_price: model.input_price,
+      output_price: model.output_price,
       context_window: model.context_window,
       max_tokens: model.max_tokens,
       is_active: model.is_active,
-      providers,
       created_at: model.created_at,
       updated_at: model.updated_at,
     };

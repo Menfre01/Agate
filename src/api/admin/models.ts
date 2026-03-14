@@ -11,7 +11,6 @@ import type {
   RequestContext,
   CreateModelDto,
   UpdateModelDto,
-  LinkModelProviderDto,
 } from "@/types/index.js";
 import { ModelService } from "@/services/model.service.js";
 import { ValidationError, NotFoundError } from "@/utils/errors/index.js";
@@ -46,6 +45,9 @@ export async function createModel(
   }
   if (!body.display_name) {
     throw new ValidationError("Missing required field: display_name");
+  }
+  if (!body.provider_id) {
+    throw new ValidationError("Missing required field: provider_id");
   }
 
   const modelService = new ModelService(env);
@@ -105,55 +107,6 @@ export async function deleteModel(
 }
 
 /**
- * Handles POST /admin/models/:id/link - Link model to provider.
- */
-export async function linkProvider(
-  request: Request,
-  env: Env,
-  context: RequestContext,
-  id: string
-): Promise<Response> {
-  const body = (await request.json()) as LinkModelProviderDto;
-
-  if (!body.provider_id) {
-    throw new ValidationError("Missing required field: provider_id");
-  }
-
-  const modelService = new ModelService(env);
-  await modelService.linkProvider(id, body);
-
-  return withResponseLogging(
-    Response.json({
-      success: true,
-      message: "Model linked to provider",
-    }),
-    context
-  );
-}
-
-/**
- * Handles DELETE /admin/models/:id/link/:providerId - Unlink model from provider.
- */
-export async function unlinkProvider(
-  _request: Request,
-  env: Env,
-  context: RequestContext,
-  id: string,
-  providerId: string
-): Promise<Response> {
-  const modelService = new ModelService(env);
-  await modelService.unlinkProvider(id, providerId);
-
-  return withResponseLogging(
-    Response.json({
-      success: true,
-      message: "Model unlinked from provider",
-    }),
-    context
-  );
-}
-
-/**
  * Routes admin models requests.
  */
 export function modelsRouteHandler(
@@ -196,14 +149,6 @@ export function modelsRouteHandler(
 
     if (parts.length === 4 && request.method === "DELETE") {
       return deleteModel(request, env, context, id);
-    }
-
-    if (parts[4] === "link" && request.method === "POST") {
-      return linkProvider(request, env, context, id);
-    }
-
-    if (parts[4] === "link" && parts[5] && request.method === "DELETE") {
-      return unlinkProvider(request, env, context, id, parts[5]);
     }
 
     return Promise.resolve(

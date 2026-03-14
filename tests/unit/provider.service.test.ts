@@ -18,7 +18,7 @@ vi.mock("@/db/queries.js", () => ({
   createProviderCredential: vi.fn(),
   deleteProviderCredential: vi.fn(),
   getProviderCredential: vi.fn(),
-  listModelProvidersByModel: vi.fn(),
+  getModel: vi.fn(),
   updateCredentialHealth: vi.fn(),
 }));
 
@@ -56,7 +56,7 @@ describe("ProviderService", () => {
     vi.mocked(queries.createProviderCredential).mockResolvedValue(undefined);
     vi.mocked(queries.deleteProviderCredential).mockResolvedValue(undefined);
     vi.mocked(queries.getProviderCredential).mockResolvedValue(null);
-    vi.mocked(queries.listModelProvidersByModel).mockResolvedValue([]);
+    vi.mocked(queries.getModel).mockResolvedValue(null);
     vi.mocked(queries.updateCredentialHealth).mockResolvedValue(undefined);
 
     providerService = new ProviderService(mockEnv);
@@ -119,22 +119,22 @@ describe("ProviderService", () => {
     });
   });
 
-  describe("consistentHash", () => {
+  describe("consistentHashObject", () => {
     it("should return consistent results for same input", () => {
-      const values = ["a", "b", "c"];
+      const objects = [{ id: "a" }, { id: "b" }, { id: "c" }];
       const seed = "test-seed";
 
-      const result1 = (providerService as any).consistentHash(values, seed);
-      const result2 = (providerService as any).consistentHash(values, seed);
+      const result1 = (providerService as any).consistentHashObject(objects, seed);
+      const result2 = (providerService as any).consistentHashObject(objects, seed);
 
       expect(result1).toBe(result2);
     });
 
     it("should return different results for different seeds", () => {
-      const values = ["a", "b", "c"];
+      const objects = [{ id: "a" }, { id: "b" }, { id: "c" }];
 
-      const result1 = (providerService as any).consistentHash(values, "seed1");
-      const result2 = (providerService as any).consistentHash(values, "seed2");
+      const result1 = (providerService as any).consistentHashObject(objects, "seed1");
+      const result2 = (providerService as any).consistentHashObject(objects, "seed2");
 
       expect(result1).toBeDefined();
       expect(result2).toBeDefined();

@@ -28,8 +28,6 @@ import {
   createModel,
   updateModel,
   deleteModel,
-  linkProvider,
-  unlinkProvider,
 } from "@/api/admin/models.js";
 import {
   listQuotas,
@@ -99,14 +97,6 @@ describe("Admin API - /admin/models exports", () => {
 
   it("should export deleteModel function", () => {
     expect(typeof deleteModel).toBe("function");
-  });
-
-  it("should export linkProvider function", () => {
-    expect(typeof linkProvider).toBe("function");
-  });
-
-  it("should export unlinkProvider function", () => {
-    expect(typeof unlinkProvider).toBe("function");
   });
 });
 

@@ -136,6 +136,12 @@ export interface Model {
   model_id: string;
   /** Human-readable display name */
   display_name: string;
+  /** Provider ID (many-to-one relationship) */
+  provider_id: string;
+  /** Input price per 1K tokens (USD) */
+  input_price: number;
+  /** Output price per 1K tokens (USD) */
+  output_price: number;
   /** Context window size (tokens) */
   context_window: number;
   /** Maximum output tokens */
@@ -146,29 +152,6 @@ export interface Model {
   created_at: number;
   /** Last update timestamp */
   updated_at: number;
-}
-
-/**
- * ModelProvider association (many-to-many relationship)
- * @see prd.md Section 3.2.2
- */
-export interface ModelProvider {
-  /** Unique identifier */
-  id: string;
-  /** Model ID */
-  model_id: string;
-  /** Provider ID */
-  provider_id: string;
-  /** Input price per 1K tokens (USD) */
-  input_price: number;
-  /** Output price per 1K tokens (USD) */
-  output_price: number;
-  /** Provider priority (higher = preferred) */
-  priority: number;
-  /** Whether association is active */
-  is_active: boolean;
-  /** Creation timestamp */
-  created_at: number;
 }
 
 /**
@@ -623,6 +606,12 @@ export interface CreateModelDto {
   model_id: string;
   /** Human-readable display name */
   display_name: string;
+  /** Provider ID */
+  provider_id: string;
+  /** Input price per 1K tokens */
+  input_price?: number;
+  /** Output price per 1K tokens */
+  output_price?: number;
   /** Context window size */
   context_window?: number;
   /** Maximum output tokens */
@@ -653,38 +642,24 @@ export interface ModelResponse {
   model_id: string;
   /** Human-readable display name */
   display_name: string;
+  /** Provider ID */
+  provider_id: string;
+  /** Provider name */
+  provider_name: string;
+  /** Input price per 1K tokens */
+  input_price: number;
+  /** Output price per 1K tokens */
+  output_price: number;
   /** Context window size */
   context_window: number;
   /** Maximum output tokens */
   max_tokens: number;
   /** Whether model is active */
   is_active: boolean;
-  /** Available providers */
-  providers: Array<{
-    provider_id: string;
-    provider_name: string;
-    input_price: number;
-    output_price: number;
-    priority: number;
-  }>;
   /** Creation timestamp */
   created_at: number;
   /** Last update timestamp */
   updated_at: number;
-}
-
-/**
- * Link Model to Provider request DTO
- */
-export interface LinkModelProviderDto {
-  /** Provider ID */
-  provider_id: string;
-  /** Input price per 1K tokens */
-  input_price: number;
-  /** Output price per 1K tokens */
-  output_price: number;
-  /** Provider priority (optional) */
-  priority?: number;
 }
 
 // ---------------------

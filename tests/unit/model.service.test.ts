@@ -15,10 +15,6 @@ vi.mock("@/db/queries.js", () => ({
   createModel: vi.fn(),
   updateModel: vi.fn(),
   deleteModel: vi.fn(),
-  listModelProvidersByModel: vi.fn(),
-  createModelProvider: vi.fn(),
-  deleteModelProvider: vi.fn(),
-  getModelProvider: vi.fn(),
   getDepartmentModel: vi.fn(),
   createDepartmentModel: vi.fn(),
   updateDepartmentModel: vi.fn(),
@@ -37,6 +33,9 @@ describe("ModelService", () => {
     id: "model-123",
     model_id: "claude-3-sonnet",
     display_name: "Claude 3 Sonnet",
+    provider_id: "provider-123",
+    input_price: 3.0,
+    output_price: 15.0,
     context_window: 200000,
     max_tokens: 4096,
     is_active: true,
@@ -58,16 +57,21 @@ describe("ModelService", () => {
     vi.mocked(queries.createModel).mockResolvedValue(mockModel);
     vi.mocked(queries.updateModel).mockResolvedValue(mockModel);
     vi.mocked(queries.deleteModel).mockResolvedValue(undefined);
-    vi.mocked(queries.listModelProvidersByModel).mockResolvedValue([]);
-    vi.mocked(queries.createModelProvider).mockResolvedValue(undefined);
-    vi.mocked(queries.deleteModelProvider).mockResolvedValue(undefined);
-    vi.mocked(queries.getModelProvider).mockResolvedValue(null);
     vi.mocked(queries.getDepartmentModel).mockResolvedValue(null);
     vi.mocked(queries.createDepartmentModel).mockResolvedValue(undefined);
     vi.mocked(queries.updateDepartmentModel).mockResolvedValue(undefined);
     vi.mocked(queries.listDepartmentModels).mockResolvedValue([]);
     vi.mocked(queries.getDepartment).mockResolvedValue({ name: "Test Dept" });
-    vi.mocked(queries.getProvider).mockResolvedValue(null);
+    vi.mocked(queries.getProvider).mockResolvedValue({
+      id: "provider-123",
+      name: "anthropic",
+      display_name: "Anthropic",
+      base_url: "https://api.anthropic.com",
+      api_version: "2023-06-01",
+      is_active: true,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
 
     modelService = new ModelService(mockEnv);
   });
@@ -120,6 +124,9 @@ describe("ModelService", () => {
       const result = await modelService.createModel({
         model_id: "claude-3-opus",
         display_name: "Claude 3 Opus",
+        provider_id: "provider-123",
+        input_price: 3.0,
+        output_price: 15.0,
         context_window: 200000,
       });
       expect(result.model_id).toBe("claude-3-opus");
