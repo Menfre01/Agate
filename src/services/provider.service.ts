@@ -326,12 +326,12 @@ export class ProviderService {
   }
 
   /**
-   * Selects a credential for a model request using consistent hashing.
+   * Selects a credential for a model request using cross-provider load balancing.
    *
-   * Selection process:
-   * 1. Get the model's provider_id
-   * 2. Get active credentials for that provider
-   * 3. Hash by apiKeyId to select credential
+   * Selection process (two-layer):
+   * 1. Get all active providers for the model (from model_providers)
+   * 2. Hash by apiKeyId + modelId to select provider
+   * 3. Hash by apiKeyId to select credential within provider
    *
    * @param modelId - Model ID
    * @param apiKeyId - API Key ID for consistent hashing
@@ -342,22 +342,27 @@ export class ProviderService {
     modelId: string,
     apiKeyId: string
   ): Promise<SelectedCredential> {
-    // Get the model to find its provider
-    const model = await queries.getModel(this.db, modelId);
-    if (!model) {
-      throw new NotFoundError("Model", modelId);
+    // 1. Get all active providers for this model
+    const modelProviders = await queries.getActiveProvidersForModel(this.db, modelId);
+
+    if (modelProviders.length === 0) {
+      throw new Error("No active providers found for model");
     }
 
-    const providerId = model.provider_id;
+    // 2. Select provider using consistent hash (cross-provider load balancing)
+    const selectedProvider = this.consistentHashObject(
+      modelProviders,
+      `${apiKeyId}:${modelId}`
+    ) as { provider_id: string; is_active: boolean };
 
-    // Get provider details
-    const provider = await queries.getProvider(this.db, providerId);
+    // 3. Get provider details
+    const provider = await queries.getProvider(this.db, selectedProvider.provider_id);
     if (!provider || !provider.is_active) {
       throw new Error("Provider not found or inactive");
     }
 
-    // Get active credentials for provider
-    const credentials = await queries.listProviderCredentials(this.db, providerId);
+    // 4. Get active credentials for selected provider
+    const credentials = await queries.listProviderCredentials(this.db, provider.id);
     const activeCredentials = credentials.filter(
       (c) => c.is_active && c.health_status !== "unhealthy"
     );
@@ -366,10 +371,10 @@ export class ProviderService {
       throw new Error("No active credentials found for provider");
     }
 
-    // Select credential using consistent hash
+    // 5. Select credential using consistent hash (credential-level load balancing)
     const credential = this.consistentHashObject(activeCredentials, apiKeyId);
 
-    // Decrypt API key
+    // 6. Decrypt API key
     const apiKey = await this.decryptApiKey(credential.api_key_encrypted);
 
     return {

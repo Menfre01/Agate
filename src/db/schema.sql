@@ -68,20 +68,31 @@ CREATE TABLE providers (
     updated_at INTEGER NOT NULL
 );
 
--- Models table (many-to-one relationship with providers)
+-- Models table (independent of providers - n:n relationship via model_providers)
 CREATE TABLE models (
     id TEXT PRIMARY KEY,
     model_id TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
-    provider_id TEXT NOT NULL,
-    input_price REAL DEFAULT 0,
-    output_price REAL DEFAULT 0,
     context_window INTEGER DEFAULT 0,
     max_tokens INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- Model-Provider configuration table (n:n relationship)
+CREATE TABLE model_providers (
+    id TEXT PRIMARY KEY,
+    model_id TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    input_price REAL DEFAULT 0,
+    output_price REAL DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    FOREIGN KEY (provider_id) REFERENCES providers(id)
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
+    FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE CASCADE,
+    UNIQUE(model_id, provider_id)
 );
 
 -- Department Models configuration table
@@ -205,8 +216,12 @@ CREATE INDEX idx_providers_active ON providers(is_active);
 
 -- Models indexes
 CREATE INDEX idx_models_model_id ON models(model_id);
-CREATE INDEX idx_models_provider_id ON models(provider_id);
 CREATE INDEX idx_models_active ON models(is_active);
+
+-- Model-Providers indexes
+CREATE INDEX idx_model_providers_model_id ON model_providers(model_id);
+CREATE INDEX idx_model_providers_provider_id ON model_providers(provider_id);
+CREATE INDEX idx_model_providers_active ON model_providers(is_active);
 
 -- Department Models indexes
 CREATE INDEX idx_department_models_department_id ON department_models(department_id);

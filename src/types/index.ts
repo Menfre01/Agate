@@ -136,17 +136,34 @@ export interface Model {
   model_id: string;
   /** Human-readable display name */
   display_name: string;
-  /** Provider ID (many-to-one relationship) */
-  provider_id: string;
-  /** Input price per 1K tokens (USD) */
-  input_price: number;
-  /** Output price per 1K tokens (USD) */
-  output_price: number;
   /** Context window size (tokens) */
   context_window: number;
   /** Maximum output tokens */
   max_tokens: number;
   /** Whether model is active */
+  is_active: boolean;
+  /** Creation timestamp */
+  created_at: number;
+  /** Last update timestamp */
+  updated_at: number;
+}
+
+/**
+ * ModelProvider entity for n:n model-provider relationship
+ * @see prd.md Section 3.2.2
+ */
+export interface ModelProvider {
+  /** Unique identifier */
+  id: string;
+  /** Model ID */
+  model_id: string;
+  /** Provider ID */
+  provider_id: string;
+  /** Input price per 1K tokens (USD) */
+  input_price: number;
+  /** Output price per 1K tokens (USD) */
+  output_price: number;
+  /** Whether this provider is active for this model */
   is_active: boolean;
   /** Creation timestamp */
   created_at: number;
@@ -606,12 +623,6 @@ export interface CreateModelDto {
   model_id: string;
   /** Human-readable display name */
   display_name: string;
-  /** Provider ID */
-  provider_id: string;
-  /** Input price per 1K tokens */
-  input_price?: number;
-  /** Output price per 1K tokens */
-  output_price?: number;
   /** Context window size */
   context_window?: number;
   /** Maximum output tokens */
@@ -642,6 +653,49 @@ export interface ModelResponse {
   model_id: string;
   /** Human-readable display name */
   display_name: string;
+  /** Context window size */
+  context_window: number;
+  /** Maximum output tokens */
+  max_tokens: number;
+  /** Whether model is active */
+  is_active: boolean;
+  /** Available providers for this model */
+  providers: Array<{
+    /** Provider ID */
+    provider_id: string;
+    /** Provider name */
+    provider_name: string;
+    /** Input price per 1K tokens */
+    input_price: number;
+    /** Output price per 1K tokens */
+    output_price: number;
+    /** Whether this provider is active for this model */
+    is_active: boolean;
+  }>;
+  /** Creation timestamp */
+  created_at: number;
+  /** Last update timestamp */
+  updated_at: number;
+}
+
+/**
+ * Add Provider to Model request DTO
+ */
+export interface AddModelProviderDto {
+  /** Provider ID */
+  provider_id: string;
+  /** Input price per 1K tokens */
+  input_price?: number;
+  /** Output price per 1K tokens */
+  output_price?: number;
+}
+
+/**
+ * Model-Provider response DTO
+ */
+export interface ModelProviderResponse {
+  /** Model ID */
+  model_id: string;
   /** Provider ID */
   provider_id: string;
   /** Provider name */
@@ -650,16 +704,8 @@ export interface ModelResponse {
   input_price: number;
   /** Output price per 1K tokens */
   output_price: number;
-  /** Context window size */
-  context_window: number;
-  /** Maximum output tokens */
-  max_tokens: number;
-  /** Whether model is active */
+  /** Whether this provider is active for this model */
   is_active: boolean;
-  /** Creation timestamp */
-  created_at: number;
-  /** Last update timestamp */
-  updated_at: number;
 }
 
 // ---------------------

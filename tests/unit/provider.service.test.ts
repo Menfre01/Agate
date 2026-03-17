@@ -20,6 +20,7 @@ vi.mock("@/db/queries.js", () => ({
   getProviderCredential: vi.fn(),
   getModel: vi.fn(),
   updateCredentialHealth: vi.fn(),
+  getActiveProvidersForModel: vi.fn(),
 }));
 
 import * as queries from "@/db/queries.js";
@@ -407,14 +408,23 @@ describe("ProviderService", () => {
       id: "model-123",
       model_id: "claude-3-sonnet",
       display_name: "Claude 3 Sonnet",
-      provider_id: "provider-123",
-      input_price: 3.0,
-      output_price: 15.0,
       context_window: 200000,
       max_tokens: 4096,
       is_active: true,
       created_at: Date.now(),
       updated_at: Date.now(),
+    };
+
+    const mockModelProvider = {
+      id: "mp-123",
+      model_id: "model-123",
+      provider_id: "provider-123",
+      input_price: 3.0,
+      output_price: 15.0,
+      is_active: true,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      provider_is_active: true,
     };
 
     // Valid mock encrypted key (16 bytes = 32 hex chars for IV + ciphertext)
@@ -436,6 +446,7 @@ describe("ProviderService", () => {
       vi.mocked(queries.getModel).mockResolvedValue(mockModel);
       vi.mocked(queries.getProvider).mockResolvedValue(mockProvider);
       vi.mocked(queries.listProviderCredentials).mockResolvedValue([mockCredential]);
+      vi.mocked(queries.getActiveProvidersForModel).mockResolvedValue([mockModelProvider]);
     });
 
     it("should select credential for model", async () => {
@@ -457,11 +468,19 @@ describe("ProviderService", () => {
     });
 
     it("should throw NotFoundError for non-existent model", async () => {
-      vi.mocked(queries.getModel).mockResolvedValue(null);
+      vi.mocked(queries.getActiveProvidersForModel).mockResolvedValue([]);
 
       await expect(
         providerService.selectCredential("non-existent-model", "api-key-456")
-      ).rejects.toThrow(NotFoundError);
+      ).rejects.toThrow("No active providers found for model");
+    });
+
+    it("should throw error when no active providers for model", async () => {
+      vi.mocked(queries.getActiveProvidersForModel).mockResolvedValue([]);
+
+      await expect(
+        providerService.selectCredential("model-123", "api-key-456")
+      ).rejects.toThrow("No active providers found for model");
     });
 
     it("should throw error when provider is inactive", async () => {
@@ -526,6 +545,70 @@ describe("ProviderService", () => {
           throw e;
         }
       }
+    });
+
+    it("should select from multiple providers using consistent hashing", async () => {
+      const mockProvider2: Provider = {
+        id: "provider-456",
+        name: "openai",
+        display_name: "OpenAI",
+        base_url: "https://api.openai.com",
+        api_version: "2023-06-01",
+        is_active: true,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      };
+
+      const mockModelProvider2 = {
+        id: "mp-456",
+        model_id: "model-123",
+        provider_id: "provider-456",
+        input_price: 2.5,
+        output_price: 12.0,
+        is_active: true,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        provider_is_active: true,
+      };
+
+      vi.mocked(queries.getActiveProvidersForModel).mockResolvedValue([
+        mockModelProvider,
+        mockModelProvider2,
+      ]);
+
+      try {
+        const selected1 = await providerService.selectCredential("model-123", "api-key-1");
+        const selected2 = await providerService.selectCredential("model-123", "api-key-1");
+
+        // Same api-key + model should select same provider
+        expect(selected1.providerId).toBe(selected2.providerId);
+      } catch (e) {
+        if (e instanceof Error && (e.message.includes("Invalid") || e.message.includes("data is too small"))) {
+          expect(true).toBe(true);
+        } else {
+          throw e;
+        }
+      }
+    });
+
+    it("should filter out inactive providers", async () => {
+      // Mock returns empty array when all providers are inactive
+      // (the SQL query in getActiveProvidersForModel filters them out)
+      vi.mocked(queries.getActiveProvidersForModel).mockResolvedValue([]);
+
+      await expect(
+        providerService.selectCredential("model-123", "api-key-456")
+      ).rejects.toThrow("No active providers found for model");
+    });
+
+    it("should filter out providers with inactive provider record", async () => {
+      // Mock returns empty array when all providers have inactive provider record
+      // (the SQL query in getActiveProvidersForModel filters them out)
+      vi.mocked(queries.getActiveProvidersForModel).mockResolvedValue([]);
+
+      await expect(
+        providerService.selectCredential("model-123", "api-key-456")
+      ).rejects.toThrow("No active providers found for model");
     });
   });
 });

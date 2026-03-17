@@ -11,7 +11,8 @@ import type {
   RequestContext,
   CreateModelDto,
   UpdateModelDto,
-} from "@/types/index.js";
+  AddModelProviderDto,
+} from "@/types/index.ts";
 import { ModelService } from "@/services/model.service.js";
 import {
   ValidationError,
@@ -48,9 +49,6 @@ export async function createModel(
   }
   if (!body.display_name) {
     throw new ValidationError("Missing required field: display_name");
-  }
-  if (!body.provider_id) {
-    throw new ValidationError("Missing required field: provider_id");
   }
 
   const modelService = new ModelService(env);
@@ -110,6 +108,61 @@ export async function deleteModel(
 }
 
 /**
+ * Handles POST /admin/models/:id/providers - Add provider to model.
+ */
+export async function addModelProvider(
+  request: Request,
+  env: Env,
+  context: RequestContext,
+  id: string
+): Promise<Response> {
+  const body = (await request.json()) as AddModelProviderDto;
+
+  if (!body.provider_id) {
+    throw new ValidationError("Missing required field: provider_id");
+  }
+
+  const modelService = new ModelService(env);
+  const result = await modelService.addProvider(id, body);
+
+  return withResponseLogging(Response.json(result, { status: 201 }), context);
+}
+
+/**
+ * Handles DELETE /admin/models/:id/providers/:providerId - Remove provider from model.
+ */
+export async function removeModelProvider(
+  _request: Request,
+  env: Env,
+  context: RequestContext,
+  id: string,
+  providerId: string
+): Promise<Response> {
+  const modelService = new ModelService(env);
+  await modelService.removeProvider(id, providerId);
+
+  return withResponseLogging(
+    Response.json({ success: true }),
+    context
+  );
+}
+
+/**
+ * Handles GET /admin/models/:id/providers - List providers for model.
+ */
+export async function listModelProviders(
+  _request: Request,
+  env: Env,
+  context: RequestContext,
+  id: string
+): Promise<Response> {
+  const modelService = new ModelService(env);
+  const providers = await modelService.listProviders(id);
+
+  return withResponseLogging(Response.json({ providers }), context);
+}
+
+/**
  * Routes admin models requests.
  */
 export function modelsRouteHandler(
@@ -140,6 +193,24 @@ export function modelsRouteHandler(
       return Promise.resolve(
         Response.json({ error: "Invalid path" }, { status: 400 })
       );
+    }
+
+    // Model provider routes
+    if (parts[4] === "providers") {
+      const modelId = parts[3];
+
+      if (parts.length === 5 && request.method === "GET") {
+        return listModelProviders(request, env, context, modelId!);
+      }
+
+      if (parts.length === 5 && request.method === "POST") {
+        return addModelProvider(request, env, context, modelId!);
+      }
+
+      if (parts.length === 6 && request.method === "DELETE") {
+        const providerId = parts[5];
+        return removeModelProvider(request, env, context, modelId!, providerId!);
+      }
     }
 
     if (parts.length === 4 && request.method === "GET") {

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ModelService } from "@/services/model.service.js";
-import type { Model, Env } from "@/types/index.js";
+import type { Model, Env } from "@/types/index.ts";
 import { NotFoundError, ValidationError, ConflictError } from "@/utils/errors/index.js";
 
 // Mock queries module
@@ -21,6 +21,10 @@ vi.mock("@/db/queries.js", () => ({
   listDepartmentModels: vi.fn(),
   getDepartment: vi.fn(),
   getProvider: vi.fn(),
+  getProvidersForModel: vi.fn(),
+  getModelProvider: vi.fn(),
+  addModelProvider: vi.fn(),
+  removeModelProvider: vi.fn(),
 }));
 
 import * as queries from "@/db/queries.js";
@@ -33,14 +37,24 @@ describe("ModelService", () => {
     id: "model-123",
     model_id: "claude-3-sonnet",
     display_name: "Claude 3 Sonnet",
-    provider_id: "provider-123",
-    input_price: 3.0,
-    output_price: 15.0,
     context_window: 200000,
     max_tokens: 4096,
     is_active: true,
     created_at: Date.now(),
     updated_at: Date.now(),
+  };
+
+  const mockModelProvider = {
+    id: "mp-123",
+    model_id: "model-123",
+    provider_id: "provider-123",
+    input_price: 3.0,
+    output_price: 15.0,
+    is_active: true,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+    provider_name: "anthropic",
+    provider_display_name: "Anthropic",
   };
 
   beforeEach(() => {
@@ -72,6 +86,9 @@ describe("ModelService", () => {
       created_at: Date.now(),
       updated_at: Date.now(),
     });
+    vi.mocked(queries.getProvidersForModel).mockResolvedValue([mockModelProvider]);
+    vi.mocked(queries.getModelProvider).mockResolvedValue(mockModelProvider);
+    vi.mocked(queries.removeModelProvider).mockResolvedValue(true);
 
     modelService = new ModelService(mockEnv);
   });
@@ -124,9 +141,6 @@ describe("ModelService", () => {
       const result = await modelService.createModel({
         model_id: "claude-3-opus",
         display_name: "Claude 3 Opus",
-        provider_id: "provider-123",
-        input_price: 3.0,
-        output_price: 15.0,
         context_window: 200000,
       });
       expect(result.model_id).toBe("claude-3-opus");
@@ -139,29 +153,14 @@ describe("ModelService", () => {
         modelService.createModel({
           model_id: "claude-3-sonnet",
           display_name: "Duplicate",
-          provider_id: "provider-123",
         })
       ).rejects.toThrow(ConflictError);
       await expect(
         modelService.createModel({
           model_id: "claude-3-sonnet",
           display_name: "Duplicate",
-          provider_id: "provider-123",
         })
       ).rejects.toThrow("Model with this model_id already exists");
-    });
-
-    it("should throw NotFoundError when provider does not exist", async () => {
-      vi.mocked(queries.getModelByModelId).mockResolvedValue(null);
-      vi.mocked(queries.getProvider).mockResolvedValue(null);
-
-      await expect(
-        modelService.createModel({
-          model_id: "new-model",
-          display_name: "New Model",
-          provider_id: "non-existent",
-        })
-      ).rejects.toThrow(NotFoundError);
     });
 
     it("should use default values for optional fields", async () => {
@@ -172,14 +171,11 @@ describe("ModelService", () => {
       const result = await modelService.createModel({
         model_id: "new-model",
         display_name: "New Model",
-        provider_id: "provider-123",
       });
 
       expect(queries.createModel).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
-          input_price: 0,
-          output_price: 0,
           context_window: 0,
           max_tokens: 0,
         })
@@ -628,6 +624,100 @@ describe("ModelService", () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].model_display_name).toBe("");
+    });
+  });
+
+  describe("addProvider", () => {
+    it("should add provider to model", async () => {
+      vi.mocked(queries.getModelProvider).mockResolvedValue(null);
+      vi.mocked(queries.addModelProvider).mockResolvedValue({
+        id: "mp-123",
+        model_id: "model-123",
+        provider_id: "provider-456",
+        input_price: 2.5,
+        output_price: 12.0,
+        is_active: true,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      });
+
+      const result = await modelService.addProvider("model-123", {
+        provider_id: "provider-456",
+        input_price: 2.5,
+        output_price: 12.0,
+      });
+
+      expect(result.provider_id).toBe("provider-456");
+      expect(result.input_price).toBe(2.5);
+    });
+
+    it("should throw NotFoundError when model not found", async () => {
+      vi.mocked(queries.getModel).mockResolvedValue(null);
+
+      await expect(
+        modelService.addProvider("non-existent", {
+          provider_id: "provider-123",
+        })
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("should throw NotFoundError when provider not found", async () => {
+      vi.mocked(queries.getProvider).mockResolvedValue(null);
+
+      await expect(
+        modelService.addProvider("model-123", {
+          provider_id: "non-existent",
+        })
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it("should throw ConflictError when provider already added", async () => {
+      vi.mocked(queries.getModelProvider).mockResolvedValue(mockModelProvider);
+
+      await expect(
+        modelService.addProvider("model-123", {
+          provider_id: "provider-123",
+        })
+      ).rejects.toThrow(ConflictError);
+    });
+  });
+
+  describe("removeProvider", () => {
+    it("should remove provider from model", async () => {
+      await expect(
+        modelService.removeProvider("model-123", "provider-123")
+      ).resolves.not.toThrow();
+
+      expect(queries.removeModelProvider).toHaveBeenCalledWith(
+        expect.anything(),
+        "model-123",
+        "provider-123"
+      );
+    });
+
+    it("should throw NotFoundError when provider not found", async () => {
+      vi.mocked(queries.getModelProvider).mockResolvedValue(null);
+
+      await expect(
+        modelService.removeProvider("model-123", "non-existent")
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe("listProviders", () => {
+    it("should list providers for model", async () => {
+      const result = await modelService.listProviders("model-123");
+
+      expect(result).toHaveLength(1);
+      expect(result[0].provider_id).toBe("provider-123");
+    });
+
+    it("should return empty array when no providers", async () => {
+      vi.mocked(queries.getProvidersForModel).mockResolvedValue([]);
+
+      const result = await modelService.listProviders("model-123");
+
+      expect(result).toEqual([]);
     });
   });
 });

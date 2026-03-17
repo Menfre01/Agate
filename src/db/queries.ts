@@ -14,12 +14,13 @@ import type {
   User,
   Provider,
   Model,
+  ModelProvider,
   DepartmentModel,
   ApiKey,
   ProviderCredential,
   UsageLog,
   QuotaChange,
-} from "@/types/index.js";
+} from "@/types/index.ts";
 
 // Re-export entity types for backward compatibility
 export type {
@@ -28,6 +29,7 @@ export type {
   User,
   Provider,
   Model,
+  ModelProvider,
   DepartmentModel,
   ApiKey,
   ProviderCredential,
@@ -105,9 +107,6 @@ export interface CreateModelDto {
   id: string;
   model_id: string;
   display_name: string;
-  provider_id: string;
-  input_price?: number;
-  output_price?: number;
   context_window?: number;
   max_tokens?: number;
 }
@@ -838,17 +837,13 @@ export class Queries {
     const result = await this.db
       .prepare(
         `INSERT INTO models (
-          id, model_id, display_name, provider_id, input_price, output_price,
-          context_window, max_tokens, is_active, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
+          id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
       )
       .bind(
         data.id,
         data.model_id,
         data.display_name,
-        data.provider_id,
-        data.input_price ?? 0,
-        data.output_price ?? 0,
         data.context_window ?? 0,
         data.max_tokens ?? 0,
         true,
@@ -917,6 +912,165 @@ export class Queries {
     const result = await this.db
       .prepare('DELETE FROM models WHERE id = ?1')
       .bind(id)
+      .run();
+    return result.success && (result.meta.rows_read ?? 0) > 0;
+  }
+
+  // ============================================
+  // ModelProvider Operations (n:n relationship)
+  // ============================================
+
+  /**
+   * Get all providers for a model
+   *
+   * @param modelId - Model ID
+   * @returns Array of model-provider configurations with provider details
+   */
+  async getProvidersForModel(
+    modelId: string
+  ): Promise<Array<ModelProvider & { provider_name: string; provider_display_name: string }>> {
+    const result = await this.db
+      .prepare(
+        `SELECT mp.*, p.name as provider_name, p.display_name as provider_display_name
+         FROM model_providers mp
+         JOIN providers p ON mp.provider_id = p.id
+         WHERE mp.model_id = ?1
+         ORDER BY mp.created_at`
+      )
+      .bind(modelId)
+      .all<ModelProvider & { provider_name: string; provider_display_name: string }>();
+    return result.results;
+  }
+
+  /**
+   * Get active providers for a model (for load balancing)
+   *
+   * @param modelId - Model ID
+   * @returns Array of active model-provider configurations
+   */
+  async getActiveProvidersForModel(
+    modelId: string
+  ): Promise<Array<ModelProvider & { provider_is_active: boolean }>> {
+    const result = await this.db
+      .prepare(
+        `SELECT mp.*, p.is_active as provider_is_active
+         FROM model_providers mp
+         JOIN providers p ON mp.provider_id = p.id
+         WHERE mp.model_id = ?1 AND mp.is_active = 1 AND p.is_active = 1
+         ORDER BY mp.created_at`
+      )
+      .bind(modelId)
+      .all<ModelProvider & { provider_is_active: boolean }>();
+    return result.results;
+  }
+
+  /**
+   * Get a specific model-provider configuration
+   *
+   * @param modelId - Model ID
+   * @param providerId - Provider ID
+   * @returns ModelProvider configuration or null
+   */
+  async getModelProvider(
+    modelId: string,
+    providerId: string
+  ): Promise<ModelProvider | null> {
+    const result = await this.db
+      .prepare('SELECT * FROM model_providers WHERE model_id = ?1 AND provider_id = ?2')
+      .bind(modelId, providerId)
+      .first<ModelProvider>();
+    return result || null;
+  }
+
+  /**
+   * Add a provider to a model
+   *
+   * @param data - ModelProvider creation data
+   * @returns Created model-provider configuration
+   */
+  async addModelProvider(data: {
+    id: string;
+    model_id: string;
+    provider_id: string;
+    input_price: number;
+    output_price: number;
+  }): Promise<ModelProvider> {
+    const now = Date.now();
+    const result = await this.db
+      .prepare(
+        `INSERT INTO model_providers (
+          id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)`
+      )
+      .bind(data.id, data.model_id, data.provider_id, data.input_price, data.output_price, now)
+      .run();
+
+    if (!result.success) {
+      throw new Error(`Failed to add model provider: ${result.error}`);
+    }
+
+    return this.getModelProvider(data.model_id, data.provider_id) as Promise<ModelProvider>;
+  }
+
+  /**
+   * Update model-provider configuration
+   *
+   * @param modelId - Model ID
+   * @param providerId - Provider ID
+   * @param data - Update data
+   * @returns Updated model-provider configuration
+   */
+  async updateModelProvider(
+    modelId: string,
+    providerId: string,
+    data: {
+      input_price?: number;
+      output_price?: number;
+      is_active?: boolean;
+    }
+  ): Promise<ModelProvider> {
+    const updates: string[] = [];
+    const params: (string | number | boolean)[] = [];
+    let paramIndex = 1;
+
+    if (data.input_price !== undefined) {
+      updates.push(`input_price = ?${paramIndex++}`);
+      params.push(data.input_price);
+    }
+    if (data.output_price !== undefined) {
+      updates.push(`output_price = ?${paramIndex++}`);
+      params.push(data.output_price);
+    }
+    if (data.is_active !== undefined) {
+      updates.push(`is_active = ?${paramIndex++}`);
+      params.push(data.is_active ? 1 : 0);
+    }
+
+    updates.push(`updated_at = ?${paramIndex++}`);
+    params.push(Date.now());
+    params.push(modelId, providerId);
+
+    const query = `UPDATE model_providers SET ${updates.join(', ')} WHERE model_id = ?${paramIndex++} AND provider_id = ?${paramIndex++}`;
+    const result = await this.db.prepare(query).bind(...params).run();
+
+    if (!result.success) {
+      throw new Error(`Failed to update model provider: ${result.error}`);
+    }
+
+    return this.getModelProvider(modelId, providerId) as Promise<ModelProvider>;
+  }
+
+  /**
+   * Remove a provider from a model
+   *
+   * @param modelId - Model ID
+   * @param providerId - Provider ID
+   * @returns true if deleted successfully
+   */
+  async removeModelProvider(modelId: string, providerId: string): Promise<boolean> {
+    const result = await this.db
+      .prepare('DELETE FROM model_providers WHERE model_id = ?1 AND provider_id = ?2')
+      .bind(modelId, providerId)
       .run();
     return result.success && (result.meta.rows_read ?? 0) > 0;
   }
@@ -1672,6 +1826,26 @@ export const createModel = (db: D1Database, data: CreateModelDto) => getQueries(
 export const updateModel = (db: D1Database, id: string, data: UpdateModelDto) =>
   getQueries(db).updateModel(id, data);
 export const deleteModel = (db: D1Database, id: string) => getQueries(db).deleteModel(id);
+
+// ModelProvider operations (n:n relationship)
+export const getProvidersForModel = (db: D1Database, modelId: string) =>
+  getQueries(db).getProvidersForModel(modelId);
+export const getActiveProvidersForModel = (db: D1Database, modelId: string) =>
+  getQueries(db).getActiveProvidersForModel(modelId);
+export const getModelProvider = (db: D1Database, modelId: string, providerId: string) =>
+  getQueries(db).getModelProvider(modelId, providerId);
+export const addModelProvider = (
+  db: D1Database,
+  data: { id: string; model_id: string; provider_id: string; input_price: number; output_price: number }
+) => getQueries(db).addModelProvider(data);
+export const updateModelProvider = (
+  db: D1Database,
+  modelId: string,
+  providerId: string,
+  data: { input_price?: number; output_price?: number; is_active?: boolean }
+) => getQueries(db).updateModelProvider(modelId, providerId, data);
+export const removeModelProvider = (db: D1Database, modelId: string, providerId: string) =>
+  getQueries(db).removeModelProvider(modelId, providerId);
 
 // API Key operations
 export const getApiKeyByKeyHash = (db: D1Database, keyHash: string) =>

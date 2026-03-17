@@ -145,14 +145,11 @@ VALUES (
 -- ============================================
 
 -- Claude 4 Opus
-INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_4_opus',
   'claude-4-opus-20250114',
   'Claude 4 Opus',
-  'p_anthropic',
-  15.0,   -- $15 per million input tokens
-  75.0,   -- $75 per million output tokens
   200000,
   8192,
   TRUE,
@@ -161,14 +158,11 @@ VALUES (
 );
 
 -- Claude 4 Sonnet
-INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_4_sonnet',
   'claude-4-sonnet-20250114',
   'Claude 4 Sonnet',
-  'p_anthropic',
-  3.0,    -- $3 per million input tokens
-  15.0,   -- $15 per million output tokens
   200000,
   8192,
   TRUE,
@@ -177,14 +171,11 @@ VALUES (
 );
 
 -- Claude 3.5 Sonnet
-INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_3_5_sonnet',
   'claude-3-5-sonnet-20241022',
   'Claude 3.5 Sonnet',
-  'p_anthropic',
-  3.0,    -- $3 per million input tokens
-  15.0,   -- $15 per million output tokens
   200000,
   8192,
   TRUE,
@@ -193,16 +184,69 @@ VALUES (
 );
 
 -- Claude 3 Haiku
-INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_3_haiku',
   'claude-3-haiku-20240307',
   'Claude 3 Haiku',
+  200000,
+  4096,
+  TRUE,
+  strftime('%s', 'now') * 1000,
+  strftime('%s', 'now') * 1000
+);
+
+-- ============================================
+-- Model Providers (n:n relationship)
+-- ============================================
+
+-- Anthropic provider for Claude 4 Opus
+INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
+VALUES (
+  'mp_claude_4_opus_anthropic',
+  'm_claude_4_opus',
+  'p_anthropic',
+  15.0,   -- $15 per million input tokens
+  75.0,   -- $75 per million output tokens
+  TRUE,
+  strftime('%s', 'now') * 1000,
+  strftime('%s', 'now') * 1000
+);
+
+-- Anthropic provider for Claude 4 Sonnet
+INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
+VALUES (
+  'mp_claude_4_sonnet_anthropic',
+  'm_claude_4_sonnet',
+  'p_anthropic',
+  3.0,    -- $3 per million input tokens
+  15.0,   -- $15 per million output tokens
+  TRUE,
+  strftime('%s', 'now') * 1000,
+  strftime('%s', 'now') * 1000
+);
+
+-- Anthropic provider for Claude 3.5 Sonnet
+INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
+VALUES (
+  'mp_claude_3_5_sonnet_anthropic',
+  'm_claude_3_5_sonnet',
+  'p_anthropic',
+  3.0,    -- $3 per million input tokens
+  15.0,   -- $15 per million output tokens
+  TRUE,
+  strftime('%s', 'now') * 1000,
+  strftime('%s', 'now') * 1000
+);
+
+-- Anthropic provider for Claude 3 Haiku
+INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
+VALUES (
+  'mp_claude_3_haiku_anthropic',
+  'm_claude_3_haiku',
   'p_anthropic',
   0.25,   -- $0.25 per million input tokens
   1.25,   -- $1.25 per million output tokens
-  200000,
-  4096,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000

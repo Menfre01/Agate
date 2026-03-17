@@ -14,8 +14,10 @@ import type {
   ModelResponse,
   SetDepartmentModelDto,
   DepartmentModelResponse,
+  AddModelProviderDto,
+  ModelProviderResponse,
   Env,
-} from "@/types/index.js";
+} from "@/types/index.ts";
 import * as queries from "@/db/queries.js";
 import { generateId } from "@/utils/id-generator.js";
 import { NotFoundError, ConflictError } from "@/utils/errors/index.js";
@@ -103,20 +105,11 @@ export class ModelService {
       throw new ConflictError("Model", "model_id", dto.model_id);
     }
 
-    // Verify provider exists
-    const provider = await queries.getProvider(this.db, dto.provider_id);
-    if (!provider) {
-      throw new NotFoundError("Provider", dto.provider_id);
-    }
-
     const now = Date.now();
     const model: Model = {
       id: generateId(),
       model_id: dto.model_id,
       display_name: dto.display_name,
-      provider_id: dto.provider_id,
-      input_price: dto.input_price ?? 0,
-      output_price: dto.output_price ?? 0,
       context_window: dto.context_window ?? 0,
       max_tokens: dto.max_tokens ?? 0,
       is_active: true,
@@ -318,25 +311,112 @@ export class ModelService {
   }
 
   /**
+   * Adds a provider to a model with pricing.
+   *
+   * @param modelId - Model ID
+   * @param dto - Add model provider data
+   * @returns Model-provider response
+   * @throws {NotFoundError} If model or provider not found
+   * @throws {ConflictError} If provider already added to model
+   */
+  async addProvider(
+    modelId: string,
+    dto: AddModelProviderDto
+  ): Promise<ModelProviderResponse> {
+    const model = await queries.getModel(this.db, modelId);
+    if (!model) {
+      throw new NotFoundError("Model", modelId);
+    }
+
+    const provider = await queries.getProvider(this.db, dto.provider_id);
+    if (!provider) {
+      throw new NotFoundError("Provider", dto.provider_id);
+    }
+
+    // Check existing
+    const existing = await queries.getModelProvider(this.db, modelId, dto.provider_id);
+    if (existing) {
+      throw new ConflictError("ModelProvider", "model_id,provider_id", `${modelId},${dto.provider_id}`);
+    }
+
+    const result = await queries.addModelProvider(this.db, {
+      id: generateId(),
+      model_id: modelId,
+      provider_id: dto.provider_id,
+      input_price: dto.input_price ?? 0,
+      output_price: dto.output_price ?? 0,
+    });
+
+    return {
+      model_id: modelId,
+      provider_id: dto.provider_id,
+      provider_name: provider.name,
+      input_price: result.input_price,
+      output_price: result.output_price,
+      is_active: Boolean(result.is_active),
+    };
+  }
+
+  /**
+   * Removes a provider from a model.
+   *
+   * @param modelId - Model ID
+   * @param providerId - Provider ID
+   * @throws {NotFoundError} If model-provider configuration not found
+   */
+  async removeProvider(modelId: string, providerId: string): Promise<void> {
+    const existing = await queries.getModelProvider(this.db, modelId, providerId);
+    if (!existing) {
+      throw new NotFoundError("ModelProvider", `${modelId}-${providerId}`);
+    }
+
+    await queries.removeModelProvider(this.db, modelId, providerId);
+  }
+
+  /**
+   * Lists all providers for a model.
+   *
+   * @param modelId - Model ID
+   * @returns Array of model-provider responses
+   */
+  async listProviders(modelId: string): Promise<ModelProviderResponse[]> {
+    const modelProviders = await queries.getProvidersForModel(this.db, modelId);
+
+    return modelProviders.map((mp) => ({
+      model_id: modelId,
+      provider_id: mp.provider_id,
+      provider_name: mp.provider_name,
+      input_price: mp.input_price,
+      output_price: mp.output_price,
+      is_active: Boolean(mp.is_active),
+    }));
+  }
+
+  /**
    * Builds a complete ModelResponse with provider information.
    *
    * @param model - Model entity
    * @returns Model response DTO
    */
   private async buildResponse(model: Model): Promise<ModelResponse> {
-    const provider = await queries.getProvider(this.db, model.provider_id);
+    const modelProviders = await queries.getProvidersForModel(this.db, model.id);
+
+    const providers = modelProviders.map((mp) => ({
+      provider_id: mp.provider_id,
+      provider_name: mp.provider_name,
+      input_price: mp.input_price,
+      output_price: mp.output_price,
+      is_active: Boolean(mp.is_active),
+    }));
 
     return {
       id: model.id,
       model_id: model.model_id,
       display_name: model.display_name,
-      provider_id: model.provider_id,
-      provider_name: provider?.name ?? "",
-      input_price: model.input_price,
-      output_price: model.output_price,
       context_window: model.context_window,
       max_tokens: model.max_tokens,
       is_active: Boolean(model.is_active),
+      providers,
       created_at: model.created_at,
       updated_at: model.updated_at,
     };
