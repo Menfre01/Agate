@@ -223,6 +223,8 @@ export interface ProviderCredential {
   credential_name: string;
   /** Encrypted API key */
   api_key_encrypted: string;
+  /** Custom base URL (optional, falls back to provider's base_url) */
+  base_url: string | null;
   /** Whether credential is active */
   is_active: boolean;
   /** Credential priority (higher = preferred) */
@@ -583,6 +585,8 @@ export interface AddProviderCredentialDto {
   credential_name: string;
   /** Raw API key (will be encrypted) */
   api_key: string;
+  /** Custom base URL (optional, falls back to provider's base_url) */
+  base_url?: string;
   /** Credential priority (optional) */
   priority?: number;
   /** Load balancing weight (optional) */
@@ -597,6 +601,8 @@ export interface ProviderCredentialResponse {
   id: string;
   /** Credential name */
   credential_name: string;
+  /** Custom base URL (null if using provider's default) */
+  base_url: string | null;
   /** Whether credential is active */
   is_active: boolean;
   /** Credential priority */

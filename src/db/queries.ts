@@ -1495,6 +1495,7 @@ export class Queries {
     provider_id: string;
     credential_name: string;
     api_key_encrypted: string;
+    base_url?: string | null;
     priority?: number;
     weight?: number;
   }): Promise<ProviderCredential> {
@@ -1502,16 +1503,17 @@ export class Queries {
     const result = await this.db
       .prepare(
         `INSERT INTO provider_credentials (
-          id, provider_id, credential_name, api_key_encrypted,
+          id, provider_id, credential_name, api_key_encrypted, base_url,
           is_active, priority, weight, health_status,
           last_health_check, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`
       )
       .bind(
         data.id,
         data.provider_id,
         data.credential_name,
         data.api_key_encrypted,
+        data.base_url ?? null,
         true,
         data.priority ?? 0,
         data.weight ?? 1,

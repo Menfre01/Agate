@@ -231,6 +231,7 @@ export class ProviderService {
     return credentials.map((c) => ({
       id: c.id,
       credential_name: c.credential_name,
+      base_url: c.base_url ?? null,
       is_active: Boolean(c.is_active),
       priority: c.priority,
       weight: c.weight,
@@ -247,6 +248,7 @@ export class ProviderService {
    * @param dto - Credential data
    * @returns Created credential response
    * @throws {NotFoundError} If provider not found
+   * @throws {ValidationError} If base_url format is invalid
    */
   async addCredential(
     providerId: string,
@@ -255,6 +257,17 @@ export class ProviderService {
     const provider = await queries.getProvider(this.db, providerId);
     if (!provider) {
       throw new NotFoundError("Provider", providerId);
+    }
+
+    // Validate base_url format if provided
+    if (dto.base_url) {
+      try {
+        new URL(dto.base_url);
+      } catch {
+        throw new ValidationError("Invalid base URL format", {
+          base_url: dto.base_url,
+        });
+      }
     }
 
     // Encrypt the API key
@@ -274,6 +287,7 @@ export class ProviderService {
       provider_id: providerId,
       credential_name: dto.credential_name,
       api_key_encrypted: encryptedKey,
+      base_url: dto.base_url ?? null,
       is_active: true,
       priority: dto.priority ?? 0,
       weight: dto.weight ?? 1,
@@ -288,6 +302,7 @@ export class ProviderService {
     return {
       id: credential.id,
       credential_name: credential.credential_name,
+      base_url: credential.base_url,
       is_active: Boolean(credential.is_active),
       priority: credential.priority,
       weight: credential.weight,
@@ -333,6 +348,8 @@ export class ProviderService {
    * 2. Hash by apiKeyId + modelId to select provider
    * 3. Hash by apiKeyId to select credential within provider
    *
+   * Base URL resolution: credential.base_url (if set) → provider.base_url (fallback)
+   *
    * @param modelId - Model ID
    * @param apiKeyId - API Key ID for consistent hashing
    * @returns Selected credential
@@ -377,10 +394,13 @@ export class ProviderService {
     // 6. Decrypt API key
     const apiKey = await this.decryptApiKey(credential.api_key_encrypted);
 
+    // 7. Resolve base URL: credential-level takes precedence over provider-level
+    const baseUrl = credential.base_url ?? provider.base_url;
+
     return {
       providerId: provider.id,
       providerName: provider.name,
-      baseUrl: provider.base_url,
+      baseUrl,
       apiVersion: provider.api_version,
       credentialId: credential.id,
       apiKey,

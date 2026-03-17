@@ -154,6 +154,7 @@ export async function addCredential(
   const credential = await providerService.addCredential(id, {
     credential_name: body.credential_name,
     api_key: body.api_key,
+    base_url: body.base_url,
     priority: body.priority ?? 0,
     weight: body.weight ?? 1,
   });
@@ -161,6 +162,7 @@ export async function addCredential(
   const response: ProviderCredentialResponse = {
     id: credential.id,
     credential_name: credential.credential_name,
+    base_url: credential.base_url,
     is_active: Boolean(credential.is_active),
     priority: credential.priority,
     weight: credential.weight,

@@ -142,6 +142,7 @@ CREATE TABLE provider_credentials (
     provider_id TEXT NOT NULL,
     credential_name TEXT NOT NULL,
     api_key_encrypted TEXT NOT NULL,
+    base_url TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     priority INTEGER DEFAULT 0,
     weight INTEGER DEFAULT 1,
