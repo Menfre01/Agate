@@ -328,8 +328,7 @@ describe("Providers API", () => {
       }
     });
 
-    it.skip("应该返回 404 对于不存在的凭证", async () => {
-      // TODO: DELETE /admin/providers/credentials/:id 端点未实现
+    it("应该返回 404 对于不存在的凭证", async () => {
       const response = await apiClient.deleteProviderCredential(
         crypto.randomUUID()
       );

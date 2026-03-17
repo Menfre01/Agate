@@ -2251,7 +2251,7 @@ export const getTotalCost = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT SUM(u.total_tokens * COALESCE(m.input_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN models m ON u.model_id = m.id ${whereClause}`
+    `SELECT SUM((u.input_tokens * COALESCE(mp.input_price, 0) + u.output_tokens * COALESCE(mp.output_price, 0)) / 1000) as total_cost FROM usage_logs u INNER JOIN model_providers mp ON u.model_id = mp.model_id AND u.provider_id = mp.provider_id ${whereClause}`
   ).bind(...params).first<{ total_cost: number }>();
   return { total_cost: result?.total_cost ?? 0 };
 };
@@ -2279,7 +2279,7 @@ export const getCostByModel = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT u.model_id, u.model_name, SUM(u.input_tokens * COALESCE(m.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(m.output_price, 0) / 1000) as output_cost, SUM(u.input_tokens * COALESCE(m.input_price, 0) / 1000 + u.output_tokens * COALESCE(m.output_price, 0) / 1000) as total_cost FROM usage_logs u LEFT JOIN models m ON u.model_id = m.id ${whereClause} GROUP BY u.model_id, u.model_name`
+    `SELECT u.model_id, u.model_name, SUM(u.input_tokens * COALESCE(mp.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(mp.output_price, 0) / 1000) as output_cost, SUM((u.input_tokens * COALESCE(mp.input_price, 0) + u.output_tokens * COALESCE(mp.output_price, 0)) / 1000) as total_cost FROM usage_logs u INNER JOIN model_providers mp ON u.model_id = mp.model_id AND u.provider_id = mp.provider_id ${whereClause} GROUP BY u.model_id, u.model_name`
   ).bind(...params).all();
   return result.results;
 };
@@ -2307,7 +2307,7 @@ export const getCostByProvider = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT p.id as provider_id, p.name as provider_name, SUM((u.input_tokens * COALESCE(m.input_price, 0) + u.output_tokens * COALESCE(m.output_price, 0)) / 1000) as total_cost FROM usage_logs u LEFT JOIN models m ON u.model_id = m.id LEFT JOIN providers p ON m.provider_id = p.id ${whereClause} GROUP BY p.id, p.name`
+    `SELECT p.id as provider_id, p.name as provider_name, SUM((u.input_tokens * COALESCE(mp.input_price, 0) + u.output_tokens * COALESCE(mp.output_price, 0)) / 1000) as total_cost FROM usage_logs u INNER JOIN model_providers mp ON u.model_id = mp.model_id AND u.provider_id = mp.provider_id INNER JOIN providers p ON u.provider_id = p.id ${whereClause} GROUP BY p.id, p.name`
   ).bind(...params).all();
   return result.results;
 };

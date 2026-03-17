@@ -7,8 +7,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { ApiClient } from "@test/helpers/api-client";
 import {
-  createProviderData,
-  createModelData,
   createDepartmentData,
   createUserData,
 } from "@test/helpers/test-data.factory";
@@ -45,37 +43,6 @@ describe("Proxy API", () => {
       }
     });
 
-    it.skip("应该基于部门权限过滤模型", async () => {
-      // TODO: /v1/models 端点尚未实现部门权限过滤
-      // 创建测试用户和 API Key
-      const userData = createUserData(testCompanyId, testDeptId, {
-        email: `proxy-model-test-${Date.now()}@example.com`,
-        name: "Proxy Model User",
-      });
-      const userResponse = await apiClient.createUser(userData);
-
-      if (userResponse.status === 401) {
-        console.log("跳过测试 - 需要有效的管理员 API Key");
-        return;
-      }
-
-      if (userResponse.status === 201) {
-        const keyResponse = await apiClient.createApiKey({
-          user_id: userResponse.data.id,
-          company_id: testCompanyId,
-          department_id: testDeptId,
-          name: "Proxy Test Key",
-        });
-
-        if (keyResponse.status === 201) {
-          const response = await apiClient.proxyGetModels(keyResponse.data.key);
-          expect(response.status).toBe(200);
-          // Anthropic 格式: { object: "list", data: [...] }
-          expect(response.data.object).toBe("list");
-          expect(response.data.data).toBeInstanceOf(Array);
-        }
-      }
-    });
   });
 
   describe("POST /v1/messages", () => {
@@ -211,111 +178,6 @@ describe("Proxy API", () => {
       } else {
         // 可能返回 400(无效参数), 404(模型不存在), 403(无权限), 或其他错误
         expect([400, 403, 404, 500, 502]).toContain(response.status);
-      }
-    });
-  });
-
-  describe.skip("部门模型权限", () => {
-    // TODO: /v1/models 端点尚未实现部门权限过滤功能
-    it("应该拒绝无权限的模型访问", async () => {
-      // 创建一个新部门，不给任何模型权限
-      const deptData = createDepartmentData(testCompanyId, {
-        name: `Restricted Dept ${Date.now()}`,
-      });
-      const deptResponse = await apiClient.createDepartment(deptData);
-
-      if (deptResponse.status === 401) {
-        console.log("跳过测试 - 需要有效的管理员 API Key");
-        return;
-      }
-
-      if (deptResponse.status === 201) {
-        // 创建该部门的用户和 API Key
-        const userData = createUserData(testCompanyId, deptResponse.data.id, {
-          email: `restricted-user-${Date.now()}@example.com`,
-          name: "Restricted User",
-        });
-        const userResponse = await apiClient.createUser(userData);
-
-        if (userResponse.status === 201) {
-          const keyResponse = await apiClient.createApiKey({
-            user_id: userResponse.data.id,
-            company_id: testCompanyId,
-            department_id: deptResponse.data.id,
-            name: "Restricted Key",
-          });
-
-          if (keyResponse.status === 201) {
-            // 尝试访问模型（应该失败或返回空列表）
-            const modelsResponse = await apiClient.proxyGetModels(keyResponse.data.key);
-            expect(modelsResponse.status).toBe(200);
-            // Anthropic 格式: { object: "list", data: [...] }
-            expect(modelsResponse.data.object).toBe("list");
-            // 无权限时应该返回空数组
-            expect(modelsResponse.data.data.length).toBe(0);
-          }
-        }
-      }
-    });
-
-    it("应该允许有权限的模型访问", async () => {
-      // 创建新部门并给予权限
-      const deptData = createDepartmentData(testCompanyId, {
-        name: `Allowed Dept ${Date.now()}`,
-      });
-      const deptResponse = await apiClient.createDepartment(deptData);
-
-      if (deptResponse.status === 401) {
-        console.log("跳过测试 - 需要有效的管理员 API Key");
-        return;
-      }
-
-      if (deptResponse.status === 201) {
-        // 先创建一个供应商和模型
-        const providerData = createProviderData({
-          name: `perm-test-provider-${Date.now()}`,
-        });
-        const providerResponse = await apiClient.createProvider(providerData);
-
-        if (providerResponse.status === 201) {
-          const modelData = createModelData(providerResponse.data.id, {
-            model_id: `perm-test-model-${Date.now()}`,
-          });
-          const modelResponse = await apiClient.createModel(modelData);
-
-          if (modelResponse.status === 201) {
-            // 给部门添加模型权限
-            await apiClient.setDepartmentModel(deptResponse.data.id, modelData.id, {
-              is_allowed: true,
-              daily_quota: 1000,
-            });
-
-            // 创建该部门的用户和 API Key
-            const userData = createUserData(testCompanyId, deptResponse.data.id, {
-              email: `allowed-user-${Date.now()}@example.com`,
-              name: "Allowed User",
-            });
-            const userResponse = await apiClient.createUser(userData);
-
-            if (userResponse.status === 201) {
-              const keyResponse = await apiClient.createApiKey({
-                user_id: userResponse.data.id,
-                company_id: testCompanyId,
-                department_id: deptResponse.data.id,
-                name: "Allowed Key",
-              });
-
-              if (keyResponse.status === 201) {
-                const modelsResponse = await apiClient.proxyGetModels(keyResponse.data.key);
-                expect(modelsResponse.status).toBe(200);
-                // Anthropic 格式: { object: "list", data: [...] }
-                expect(modelsResponse.data.object).toBe("list");
-                // 应该能看到有权限的模型
-                expect(modelsResponse.data.data.length).toBeGreaterThan(0);
-              }
-            }
-          }
-        }
       }
     });
   });

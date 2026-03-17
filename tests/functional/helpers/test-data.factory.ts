@@ -115,19 +115,31 @@ export function createProviderData(overrides?: Partial<CreateProviderDto>): Crea
 
 /**
  * 创建模型数据 DTO
+ *
+ * 注意：模型与供应商现在是 n:n 关系，
+ * 需要通过 addModelProvider API 单独添加供应商和定价
  */
-export function createModelData(
-  providerId: string,
-  overrides?: Partial<CreateModelDto>
-): CreateModelDto {
+export function createModelData(overrides?: Partial<CreateModelDto>): CreateModelDto {
   return {
     model_id: generateUniqueId("test-model"),
     display_name: `Test Model ${Date.now()}`,
+    context_window: 200000,
+    max_tokens: 4096,
+    ...overrides,
+  };
+}
+
+/**
+ * 创建模型-供应商关联数据 DTO
+ */
+export function createModelProviderData(
+  providerId: string,
+  overrides?: Partial<{ input_price: number; output_price: number }>
+): { provider_id: string; input_price: number; output_price: number } {
+  return {
     provider_id: providerId,
     input_price: 0.003,
     output_price: 0.015,
-    context_window: 200000,
-    max_tokens: 4096,
     ...overrides,
   };
 }

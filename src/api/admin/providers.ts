@@ -175,6 +175,24 @@ export async function addCredential(
 }
 
 /**
+ * Handles DELETE /admin/providers/credentials/:id - Delete provider credential.
+ */
+export async function deleteCredential(
+  _request: Request,
+  env: Env,
+  context: RequestContext,
+  credentialId: string
+): Promise<Response> {
+  const providerService = new ProviderService(env);
+  await providerService.deleteCredential(credentialId);
+
+  return withResponseLogging(
+    Response.json({ success: true, message: "Credential deleted" }),
+    context
+  );
+}
+
+/**
  * Routes admin providers requests.
  */
 export function providersRouteHandler(
@@ -221,6 +239,14 @@ export function providersRouteHandler(
 
     if (parts[4] === "credentials" && request.method === "POST") {
       return addCredential(request, env, context, id);
+    }
+
+    // DELETE /admin/providers/credentials/:id
+    if (parts[3] === "credentials" && parts.length === 5 && request.method === "DELETE") {
+      const credentialId = parts[4];
+      if (credentialId) {
+        return deleteCredential(request, env, context, credentialId);
+      }
     }
 
     return Promise.resolve(

@@ -9,6 +9,7 @@ import { ApiClient } from "@test/helpers/api-client";
 import {
   createProviderData,
   createModelData,
+  createModelProviderData,
   createDepartmentData,
 } from "@test/helpers/test-data.factory";
 
@@ -60,68 +61,116 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id, {
+        // 1. 创建模型（不需要 providerId）
+        const modelData = createModelData({
           model_id: `claude-3-sonnet-${Date.now()}`,
           display_name: "Claude 3 Sonnet",
-          input_price: 0.003,
-          output_price: 0.015,
           context_window: 200000,
           max_tokens: 4096,
         });
 
-        const response = await apiClient.createModel(modelData);
+        const modelResponse = await apiClient.createModel(modelData);
 
-        expect([201, 409]).toContain(response.status);
-        if (response.status === 201) {
-          expect(response.data.model_id).toContain("claude-3-sonnet");
-          expect(response.data.display_name).toBe("Claude 3 Sonnet");
-          expect(response.data.provider_id).toBe(providerResponse.data.id);
-          expect(response.data.input_price).toBe(0.003);
-          expect(response.data.output_price).toBe(0.015);
-          expect(response.data.context_window).toBe(200000);
-          expect(response.data.max_tokens).toBe(4096);
+        expect([201, 409]).toContain(modelResponse.status);
+        if (modelResponse.status === 201) {
+          expect(modelResponse.data.model_id).toContain("claude-3-sonnet");
+          expect(modelResponse.data.display_name).toBe("Claude 3 Sonnet");
+          expect(modelResponse.data.context_window).toBe(200000);
+          expect(modelResponse.data.max_tokens).toBe(4096);
+
+          // 2. 添加供应商到模型（n:n 关系）
+          const providerData = createModelProviderData(providerResponse.data.id, {
+            input_price: 0.003,
+            output_price: 0.015,
+          });
+          const linkResponse = await apiClient.addModelProvider(modelResponse.data.id, providerData);
+
+          expect([201, 409]).toContain(linkResponse.status);
+          if (linkResponse.status === 201) {
+            expect(linkResponse.data.provider_id).toBe(providerResponse.data.id);
+            expect(linkResponse.data.input_price).toBe(0.003);
+            expect(linkResponse.data.output_price).toBe(0.015);
+          }
         }
       }
     });
 
     it("应该拒绝重复的 model_id", async () => {
-      const providerData = createProviderData({
-        name: `dup-model-provider-${Date.now()}`,
+      const modelId = `duplicate-model-${Date.now()}`;
+      const modelData = createModelData({
+        model_id: modelId,
       });
-      const providerResponse = await apiClient.createProvider(providerData);
 
-      if (providerResponse.status === 401) {
+      const firstResponse = await apiClient.createModel(modelData);
+
+      if (firstResponse.status === 401) {
         console.log("跳过测试 - 需要有效的管理员 API Key");
         return;
       }
 
-      if (providerResponse.status === 201) {
-        const modelId = `duplicate-model-${Date.now()}`;
-        const modelData = createModelData(providerResponse.data.id, {
-          model_id: modelId,
+      if (firstResponse.status === 201) {
+        const duplicateResponse = await apiClient.createModel({
+          ...modelData,
         });
-
-        const firstResponse = await apiClient.createModel(modelData);
-        if (firstResponse.status === 201) {
-          const duplicateResponse = await apiClient.createModel({
-            ...modelData,
-            id: crypto.randomUUID(),
-          });
-          expect(duplicateResponse.status).toBe(409);
-        }
+        expect(duplicateResponse.status).toBe(409);
       }
     });
 
-    it("应该拒绝不存在供应商的模型", async () => {
-      const response = await apiClient.createModel({
-        ...createModelData(crypto.randomUUID()),
-        provider_id: crypto.randomUUID(),
+    it("应该允许为模型添加多个供应商", async () => {
+      // 创建两个供应商
+      const provider1Data = createProviderData({
+        name: `multi-provider-1-${Date.now()}`,
+      });
+      const provider2Data = createProviderData({
+        name: `multi-provider-2-${Date.now()}`,
       });
 
-      if (response.status === 401) {
+      const [provider1Response, provider2Response] = await Promise.all([
+        apiClient.createProvider(provider1Data),
+        apiClient.createProvider(provider2Data),
+      ]);
+
+      if (provider1Response.status === 401) {
         console.log("跳过测试 - 需要有效的管理员 API Key");
-      } else {
-        expect([400, 404]).toContain(response.status);
+        return;
+      }
+
+      if (provider1Response.status === 201 && provider2Response.status === 201) {
+        // 创建模型
+        const modelData = createModelData({
+          model_id: `multi-vendor-model-${Date.now()}`,
+        });
+        const modelResponse = await apiClient.createModel(modelData);
+
+        if (modelResponse.status === 201) {
+          // 添加第一个供应商
+          const link1Response = await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(provider1Response.data.id, {
+              input_price: 0.003,
+              output_price: 0.015,
+            })
+          );
+
+          // 添加第二个供应商
+          const link2Response = await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(provider2Response.data.id, {
+              input_price: 0.002,
+              output_price: 0.01,
+            })
+          );
+
+          expect([201, 409]).toContain(link1Response.status);
+          expect([201, 409]).toContain(link2Response.status);
+
+          if (link1Response.status === 201 && link2Response.status === 201) {
+            // 验证模型有两个供应商
+            const listResponse = await apiClient.listModelProviders(modelResponse.data.id);
+            expect(listResponse.status).toBe(200);
+            expect(listResponse.data.providers).toHaveLength(2);
+          }
+        }
       }
     });
   });
@@ -140,14 +189,22 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
+          // 添加供应商
+          await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id)
+          );
+
           const response = await apiClient.getModel(modelResponse.data.id);
           expect(response.status).toBe(200);
           expect(response.data.id).toBe(modelResponse.data.id);
           expect(response.data.model_id).toBe(modelData.model_id);
+          // 验证供应商列表存在
+          expect(response.data.providers).toBeInstanceOf(Array);
         }
       }
     });
@@ -176,7 +233,7 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
@@ -189,9 +246,7 @@ describe("Models API", () => {
       }
     });
 
-    it.skip("应该更新模型价格", async () => {
-      // TODO: UpdateModelDto 不支持价格更新
-      // 价格应通过模型-供应商关联或重新创建模型来更新
+    it("应该通过添加新的供应商关联来更新价格", async () => {
       const providerData = createProviderData({
         name: `update-price-provider-${Date.now()}`,
       });
@@ -203,17 +258,38 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
-          const response = await apiClient.updateModel(modelResponse.data.id, {
-            input_price: 0.005,
-            output_price: 0.02,
-          });
-          expect(response.status).toBe(200);
-          expect(response.data.input_price).toBe(0.005);
-          expect(response.data.output_price).toBe(0.02);
+          // 添加供应商关联
+          const addResponse = await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id, {
+              input_price: 0.003,
+              output_price: 0.015,
+            })
+          );
+
+          if (addResponse.status === 201) {
+            // 移除旧的关联
+            await apiClient.removeModelProvider(
+              modelResponse.data.id,
+              providerResponse.data.id
+            );
+
+            // 重新添加新价格
+            const response = await apiClient.addModelProvider(
+              modelResponse.data.id,
+              createModelProviderData(providerResponse.data.id, {
+                input_price: 0.005,
+                output_price: 0.02,
+              })
+            );
+            expect(response.status).toBe(201);
+            expect(response.data.input_price).toBe(0.005);
+            expect(response.data.output_price).toBe(0.02);
+          }
         }
       }
     });
@@ -230,7 +306,7 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
@@ -245,7 +321,7 @@ describe("Models API", () => {
   });
 
   describe("DELETE /admin/models/:id", () => {
-    it("应该删除未关联的模型", async () => {
+    it("应该删除模型", async () => {
       const providerData = createProviderData({
         name: `delete-model-provider-${Date.now()}`,
       });
@@ -257,7 +333,7 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
@@ -271,38 +347,145 @@ describe("Models API", () => {
     });
   });
 
-  describe("POST /admin/models/:id/link", () => {
-    it.skip("应该关联供应商和定价", async () => {
-      // TODO: 当前架构中模型直接关联单一供应商，不支持多供应商关联
-      // 此功能已过时，需要重新设计或移除
-      // 创建第一个供应商
-      const provider1Data = createProviderData({
-        name: `link-provider-1-${Date.now()}`,
+  describe("POST /admin/models/:id/providers", () => {
+    it("应该添加供应商到模型", async () => {
+      const providerData = createProviderData({
+        name: `add-provider-${Date.now()}`,
       });
-      const provider1Response = await apiClient.createProvider(provider1Data);
+      const providerResponse = await apiClient.createProvider(providerData);
 
-      // 创建第二个供应商
-      const provider2Data = createProviderData({
-        name: `link-provider-2-${Date.now()}`,
-      });
-      const provider2Response = await apiClient.createProvider(provider2Data);
-
-      if (provider1Response.status === 401) {
+      if (providerResponse.status === 401) {
         console.log("跳过测试 - 需要有效的管理员 API Key");
         return;
       }
 
-      if (provider1Response.status === 201 && provider2Response.status === 201) {
-        const modelData = createModelData(provider1Response.data.id);
+      if (providerResponse.status === 201) {
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
-          const response = await apiClient.linkModelToProvider(modelResponse.data.id, {
-            provider_id: provider2Response.data.id,
-            input_price: 0.002,
-            output_price: 0.01,
-          });
+          const response = await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id, {
+              input_price: 0.002,
+              output_price: 0.01,
+            })
+          );
+          expect([201, 409]).toContain(response.status);
+          if (response.status === 201) {
+            expect(response.data.provider_id).toBe(providerResponse.data.id);
+            expect(response.data.input_price).toBe(0.002);
+            expect(response.data.output_price).toBe(0.01);
+          }
+        }
+      }
+    });
+
+    it("应该拒绝重复添加同一供应商", async () => {
+      const providerData = createProviderData({
+        name: `dup-add-provider-${Date.now()}`,
+      });
+      const providerResponse = await apiClient.createProvider(providerData);
+
+      if (providerResponse.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      if (providerResponse.status === 201) {
+        const modelData = createModelData();
+        const modelResponse = await apiClient.createModel(modelData);
+
+        if (modelResponse.status === 201) {
+          const firstResponse = await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id)
+          );
+
+          if (firstResponse.status === 201) {
+            const duplicateResponse = await apiClient.addModelProvider(
+              modelResponse.data.id,
+              createModelProviderData(providerResponse.data.id)
+            );
+            expect(duplicateResponse.status).toBe(409);
+          }
+        }
+      }
+    });
+  });
+
+  describe("DELETE /admin/models/:id/providers/:providerId", () => {
+    it("应该从模型移除供应商", async () => {
+      const providerData = createProviderData({
+        name: `remove-provider-${Date.now()}`,
+      });
+      const providerResponse = await apiClient.createProvider(providerData);
+
+      if (providerResponse.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      if (providerResponse.status === 201) {
+        const modelData = createModelData();
+        const modelResponse = await apiClient.createModel(modelData);
+
+        if (modelResponse.status === 201) {
+          const addResponse = await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id)
+          );
+
+          if (addResponse.status === 201) {
+            const response = await apiClient.removeModelProvider(
+              modelResponse.data.id,
+              providerResponse.data.id
+            );
+            expect(response.status).toBe(200);
+
+            // 验证供应商已移除
+            const listResponse = await apiClient.listModelProviders(modelResponse.data.id);
+            expect(listResponse.data.providers).toHaveLength(0);
+          }
+        }
+      }
+    });
+  });
+
+  describe("GET /admin/models/:id/providers", () => {
+    it("应该列出模型的所有供应商", async () => {
+      // 创建多个供应商
+      const providers = await Promise.all([
+        apiClient.createProvider(createProviderData({ name: `list-provider-1-${Date.now()}` })),
+        apiClient.createProvider(createProviderData({ name: `list-provider-2-${Date.now()}` })),
+        apiClient.createProvider(createProviderData({ name: `list-provider-3-${Date.now()}` })),
+      ]);
+
+      if (providers[0].status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      const validProviders = providers.filter((p) => p.status === 201);
+
+      if (validProviders.length >= 2) {
+        const modelData = createModelData();
+        const modelResponse = await apiClient.createModel(modelData);
+
+        if (modelResponse.status === 201) {
+          // 添加多个供应商
+          await Promise.all(
+            validProviders.slice(0, 2).map((p) =>
+              apiClient.addModelProvider(
+                modelResponse.data.id,
+                createModelProviderData(p.data.id)
+              )
+            )
+          );
+
+          const response = await apiClient.listModelProviders(modelResponse.data.id);
           expect(response.status).toBe(200);
+          expect(response.data.providers).toHaveLength(2);
         }
       }
     });
@@ -322,10 +505,16 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
+          // 添加供应商
+          await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id)
+          );
+
           const response = await apiClient.setDepartmentModel(
             testDeptId,
             modelResponse.data.id,
@@ -354,10 +543,16 @@ describe("Models API", () => {
       }
 
       if (providerResponse.status === 201) {
-        const modelData = createModelData(providerResponse.data.id);
+        const modelData = createModelData();
         const modelResponse = await apiClient.createModel(modelData);
 
         if (modelResponse.status === 201) {
+          // 添加供应商
+          await apiClient.addModelProvider(
+            modelResponse.data.id,
+            createModelProviderData(providerResponse.data.id)
+          );
+
           // 首次设置
           await apiClient.setDepartmentModel(testDeptId, modelResponse.data.id, {
             is_allowed: true,

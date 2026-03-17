@@ -17,6 +17,7 @@ import type {
   UpdateApiKeyDto,
   UpdateProviderDto,
   UpdateModelDto,
+  AddModelProviderDto,
   AddProviderCredentialDto,
   AddBonusQuotaDto,
   SetDepartmentModelDto,
@@ -280,16 +281,29 @@ export class ApiClient {
     return this.delete(`/admin/models/${id}`);
   }
 
-  async linkModelToProvider(modelId: string, data: {
+  /**
+   * 添加供应商到模型 (n:n 关系)
+   */
+  async addModelProvider(modelId: string, dto: {
     provider_id: string;
-    input_price: number;
-    output_price: number;
+    input_price?: number;
+    output_price?: number;
   }): Promise<ApiResponse> {
-    return this.post(`/admin/models/${modelId}/link`, data);
+    return this.post(`/admin/models/${modelId}/providers`, dto);
   }
 
-  async unlinkModelFromProvider(modelId: string, providerId: string): Promise<ApiResponse> {
-    return this.delete(`/admin/models/${modelId}/link?provider_id=${providerId}`);
+  /**
+   * 从模型移除供应商
+   */
+  async removeModelProvider(modelId: string, providerId: string): Promise<ApiResponse> {
+    return this.delete(`/admin/models/${modelId}/providers/${providerId}`);
+  }
+
+  /**
+   * 列出模型的所有供应商
+   */
+  async listModelProviders(modelId: string): Promise<ApiResponse> {
+    return this.get(`/admin/models/${modelId}/providers`);
   }
 
   async setDepartmentModel(departmentId: string, modelId: string, dto: SetDepartmentModelDto): Promise<ApiResponse> {
