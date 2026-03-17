@@ -13,16 +13,18 @@ import {
 
 describe("Proxy API", () => {
   let apiClient: ApiClient;
-  let baseUrl: string;
+  let adminBaseUrl: string;
+  let proxyBaseUrl: string;
   let adminApiKey: string;
   let userApiKey: string;
   let testCompanyId: string;
   let testDeptId: string;
 
   beforeAll(async () => {
-    baseUrl = process.env.TEST_BASE_URL || "http://localhost:8787";
+    adminBaseUrl = process.env.TEST_ADMIN_BASE_URL || "http://localhost:8788";
+    proxyBaseUrl = process.env.TEST_PROXY_BASE_URL || "http://localhost:8787";
     adminApiKey = process.env.TEST_ADMIN_API_KEY || "sk-admin_dev_fixed_key_local_2024";
-    apiClient = new ApiClient(baseUrl, adminApiKey);
+    apiClient = new ApiClient(adminBaseUrl, proxyBaseUrl, adminApiKey);
 
     // 使用现有的 demo 数据
     testCompanyId = "co_demo_company";
@@ -138,7 +140,7 @@ describe("Proxy API", () => {
     it("应该处理自定义请求头", async () => {
       // 使用 fetch 直接发送请求以测试自定义头
       const requestId = `test-request-${Date.now()}`;
-      const response = await fetch(`${baseUrl}/v1/messages`, {
+      const response = await fetch(`${proxyBaseUrl}/v1/messages`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${adminApiKey}`,

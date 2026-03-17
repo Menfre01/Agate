@@ -10,7 +10,7 @@ tests/functional/
 │   ├── test-data.factory.ts    # 测试数据工厂
 │   ├── database.helper.ts      # 数据库操作助手
 │   ├── auth.helper.ts          # 认证辅助工具
-│   ├── api-client.ts           # API 客户端封装
+│   ├── api-client.ts           # API 客户端封装（支持双 Worker）
 │   └── index.ts                # 统一导出
 ├── organization/
 │   ├── companies.test.ts       # 公司管理 API
@@ -40,13 +40,19 @@ tests/functional/
 
 1. **启动本地开发服务器**：
    ```bash
+   # 同时启动 Proxy 和 Admin Worker
    npm run dev
    ```
-   这会在 `http://localhost:8787` 启动服务器。
+
+   服务地址：
+   - **Proxy API:** `http://localhost:8787`
+   - **Admin API:** `http://localhost:8788`
 
 2. **设置测试环境变量**（可选）：
    ```bash
-   export TEST_BASE_URL="http://localhost:8787"
+   export TEST_ADMIN_BASE_URL="http://localhost:8788"
+   export TEST_PROXY_BASE_URL="http://localhost:8787"
+   export TEST_ADMIN_API_KEY="sk-your-admin-key"
    ```
 
 ### 运行所有功能测试
@@ -122,8 +128,8 @@ npm run test:functional:coverage
 - `GET /admin/models/:id` - 获取模型详情
 - `PUT /admin/models/:id` - 更新模型
 - `DELETE /admin/models/:id` - 删除模型
-- `POST /admin/models/:id/link` - 关联供应商
-- `DELETE /admin/models/:id/link` - 取消关联
+- `POST /admin/models/:id/providers` - 关联供应商
+- `DELETE /admin/models/:id/providers/:provider_id` - 取消关联
 - `POST /admin/departments/:id/models` - 设置部门模型权限
 
 ### 统计分析
@@ -168,7 +174,7 @@ npm run test:functional:coverage
 
 ## 注意事项
 
-1. **D1 本地模式**：测试使用 `--local` 模式，不影响生产数据
-2. **环境变量**：测试通过 `TEST_BASE_URL` 环境变量配置服务器地址
+1. **双 Worker 架构**：测试需要同时启动 Proxy 和 Admin Worker
+2. **环境变量**：测试通过 `TEST_ADMIN_BASE_URL` 和 `TEST_PROXY_BASE_URL` 配置服务器地址
 3. **并发测试**：每个测试独立运行，使用 `singleThread: true` 配置
 4. **API Key 安全**：测试用的 API Key 使用已知哈希，不使用真实密钥

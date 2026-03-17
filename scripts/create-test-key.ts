@@ -6,7 +6,7 @@
  * Usage: npx tsx scripts/create-test-key.ts
  */
 
-import { KeyService } from "../src/services/key.service.js";
+import { KeyService } from "../workers/admin/src/services/key.service.js";
 
 // Mock environment for local development
 const mockEnv = {

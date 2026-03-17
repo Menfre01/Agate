@@ -34,10 +34,13 @@ npm run db:seed:local
 ### 3. 启动开发服务器
 
 ```bash
+# 启动两个 Worker（Proxy 和 Admin）
 npm run dev
 ```
 
-服务器将在 `http://localhost:8787` 启动。
+服务器将在以下地址启动：
+- **Proxy API:** `http://localhost:8787`
+- **Admin API:** `http://localhost:8788`
 
 ### 4. 运行 E2E 测试
 
@@ -59,7 +62,7 @@ npm run dev
 如果测试被中断或清理失败，可以手动重置数据库：
 
 ```bash
-npx wrangler d1 execute ai-gateway-db --local --file=./scripts/reset-data.sql
+npx wrangler d1 execute agate-db --local --file=./scripts/reset-data.sql
 ```
 
 ## 关于 Admin API Key
@@ -75,7 +78,7 @@ npx wrangler d1 execute ai-gateway-db --local --file=./scripts/reset-data.sql
 ./scripts/init-dev-keys.sh
 
 # 方法 2: 直接插入数据库（开发环境）
-npx wrangler d1 execute ai-gateway-db --local --command "
+npx wrangler d1 execute agate-db --local --command "
   INSERT INTO api_keys (id, key_hash, key_prefix, user_id, company_id, department_id, name, quota_daily, quota_used, quota_bonus, is_unlimited, is_active, created_at, updated_at)
   VALUES ('ak_admin_manual', 'hash_sk_admin_test', 'sk_admin_', 'u_admin', 'co_demo_company', 'dept_engineering', 'Manual Admin Key', 0, 0, 0, TRUE, TRUE, $(date +%s)000, $(date +%s)000);
 "
@@ -105,7 +108,8 @@ flowchart TB
 | `ANTHROPIC_API_KEY` | ✅ | - | 上游 API 密钥 |
 | `ANTHROPIC_BASE_URL` | ❌ | `https://api.anthropic.com` | 自定义供应商地址 |
 | `TEST_MODEL_ID` | ❌ | `claude-3-5-sonnet-20241022` | 测试用模型 ID |
-| `GATEWAY_BASE_URL` | ❌ | `http://localhost:8787` | 网关地址 |
+| `GATEWAY_PROXY_BASE_URL` | ❌ | `http://localhost:8787` | Proxy Worker 地址 |
+| `GATEWAY_ADMIN_BASE_URL` | ❌ | `http://localhost:8788` | Admin Worker 地址 |
 | `ADMIN_API_KEY` | ❌ | 自动生成 | 管理 API 密钥 |
 
 ## 自定义供应商和模型

@@ -18,12 +18,27 @@
 
 ### Overview
 
-**Base URL:** `https://your-gateway.example.com`
+Agate uses a **split-worker architecture** where API endpoints are served by different workers:
+
+- **Proxy Worker** — Handles `/v1/*` endpoints (high-frequency API requests)
+- **Admin Worker** — Handles `/admin/*` endpoints (management operations)
+
+In production, these are typically deployed on separate domains:
+- Proxy: `https://api.yourdomain.com` or `https://agate-proxy.YOUR_ACCOUNT.workers.dev`
+- Admin: `https://admin.yourdomain.com` or `https://agate-admin.YOUR_ACCOUNT.workers.dev`
+
+**Local Development:**
+- Proxy: `http://localhost:8787`
+- Admin: `http://localhost:8788`
 
 All API requests require an API key passed via the `x-api-key` header.
 
 ```bash
-curl -H "x-api-key: sk-your-api-key" https://your-gateway.example.com/health
+# Health check (Proxy Worker)
+curl http://localhost:8787/health
+
+# Admin API (Admin Worker)
+curl -H "x-api-key: sk-your-api-key" http://localhost:8788/admin/keys
 ```
 
 ### Authentication
@@ -284,16 +299,16 @@ DELETE /admin/models/:id/providers/:providerId # Remove provider from model
   "model_id": "claude-3-5-sonnet-20241022",
   "display_name": "Claude 3.5 Sonnet",
   "context_window": 200000,
-  "max_tokens": 8192,
-  "input_price": 0.003,
-  "output_price": 0.015
+  "max_tokens": 8192
 }
 ```
 
 **Add Provider to Model Request:**
 ```json
 {
-  "provider_id": "prov_123"
+  "provider_id": "prov_123",
+  "input_price": 0.003,
+  "output_price": 0.015
 }
 ```
 
@@ -420,7 +435,18 @@ When rate limit is exceeded:
 
 ### 概述
 
-**Base URL:** `https://your-gateway.example.com`
+Agate 使用 **拆分 Worker 架构**，API 端点由不同的 Worker 提供服务：
+
+- **Proxy Worker** — 处理 `/v1/*` 端点（高频 API 请求）
+- **Admin Worker** — 处理 `/admin/*` 端点（管理操作）
+
+生产环境中，这些通常部署在不同的域名上：
+- Proxy: `https://api.yourdomain.com` 或 `https://agate-proxy.YOUR_ACCOUNT.workers.dev`
+- Admin: `https://admin.yourdomain.com` 或 `https://agate-admin.YOUR_ACCOUNT.workers.dev`
+
+**本地开发环境：**
+- Proxy: `http://localhost:8787`
+- Admin: `http://localhost:8788`
 
 所有 API 请求都需要通过 `x-api-key` 请求头传递 API 密钥。
 
@@ -652,16 +678,16 @@ DELETE /admin/models/:id/providers/:providerId # 从模型移除供应商
   "model_id": "claude-3-5-sonnet-20241022",
   "display_name": "Claude 3.5 Sonnet",
   "context_window": 200000,
-  "max_tokens": 8192,
-  "input_price": 0.003,
-  "output_price": 0.015
+  "max_tokens": 8192
 }
 ```
 
 **添加供应商请求：**
 ```json
 {
-  "provider_id": "prov_123"
+  "provider_id": "prov_123",
+  "input_price": 0.003,
+  "output_price": 0.015
 }
 ```
 

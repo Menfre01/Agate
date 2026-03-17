@@ -1,5 +1,5 @@
 {
-  "name": "ai-gateway",
+  "name": "agate-proxy",
   "compatibility_date": "2024-01-01",
   "main": "src/index.ts",
   "compatibility_flags": ["nodejs_compat"],
@@ -39,5 +39,12 @@
 
   "observability": {
     "enabled": true
-  }
+  },
+
+  "routes": [
+    {
+      "pattern": "proxy.your-gateway.example.com/*",
+      "zone_name": "example.com"
+    }
+  ]
 }

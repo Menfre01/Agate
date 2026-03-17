@@ -1,15 +1,16 @@
 #!/bin/bash
-# Agate Quick Deploy Script
+# Agate Quick Deploy Script (Split Worker Architecture)
 #
 # Fast deployment to Cloudflare Workers with minimal configuration.
+# Deploys both Proxy and Admin workers.
 #
-# Usage: ./scripts/quick-deploy.sh [custom_domain] [account_id]
+# Usage: ./scripts/quick-deploy.sh [proxy_domain] [admin_domain] [account_id]
 #
 # Example:
-#   ./scripts/quick-deploy.sh                                # No custom domain, auto-detect account
-#   ./scripts/quick-deploy.sh ai.example.com                 # With custom domain, auto-detect account
-#   ./scripts/quick-deploy.sh ai.example.com abc123...       # With custom domain and specific account_id
-#   ./scripts/quick-deploy.sh "" abc123...                   # No custom domain, specific account_id
+#   ./scripts/quick-deploy.sh                                            # No custom domain, auto-detect account
+#   ./scripts/quick-deploy.sh api.example.com admin.example.com        # With custom domains
+#   ./scripts/quick-deploy.sh api.example.com admin.example.com abc... # With domains and account_id
+#   ./scripts/quick-deploy.sh "" "" abc123...                           # No custom domains, specific account_id
 
 set -e
 
@@ -19,11 +20,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-CUSTOM_DOMAIN="${1:-}"
-ACCOUNT_ID="${2:-}"
+PROXY_DOMAIN="${1:-}"
+ADMIN_DOMAIN="${2:-}"
+ACCOUNT_ID="${3:-}"
+
+# If only one argument is provided, it might be the account_id
+if [ -n "$PROXY_DOMAIN" ] && [ -z "$ADMIN_DOMAIN" ] && [[ ! "$PROXY_DOMAIN" =~ \. ]]; then
+  ACCOUNT_ID="$PROXY_DOMAIN"
+  PROXY_DOMAIN=""
+  ADMIN_DOMAIN=""
+fi
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}Agate Quick Deploy${NC}"
+echo -e "${BLUE}Agate Quick Deploy (Split Workers)${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # Check if user is logged in to wrangler
@@ -69,7 +78,7 @@ KV_PREVIEW_ID=""
 # ============================================
 # Step 1: Create D1 Database (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[1/6] Setting up D1 Database...${NC}"
+echo -e "\n${YELLOW}[1/7] Setting up D1 Database...${NC}"
 
 # Check if database already exists
 EXISTING_DB=$(wrangler d1 list 2>/dev/null | grep -o "$DB_NAME" || true)
@@ -84,7 +93,7 @@ if [ -n "$EXISTING_DB" ]; then
   fi
 else
   echo -e "${BLUE}Creating D1 database '$DB_NAME'...${NC}"
-  wrangler d1 create "$DB_NAME >/dev/null 2>&1" || wrangler d1 create "$DB_NAME"
+  wrangler d1 create "$DB_NAME" >/dev/null 2>&1 || wrangler d1 create "$DB_NAME"
   DB_ID=$(wrangler d1 list 2>/dev/null | grep -A2 "$DB_NAME" | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
   echo -e "${GREEN}Database created${NC}"
 fi
@@ -94,7 +103,7 @@ echo -e "${BLUE}Database ID: ${DB_ID}${NC}"
 # ============================================
 # Step 2: Create KV Namespace (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[2/6] Setting up KV Cache...${NC}"
+echo -e "\n${YELLOW}[2/7] Setting up KV Cache...${NC}"
 
 KV_NAME="agate-cache"
 EXISTING_KV=$(wrangler kv:namespace list 2>/dev/null | grep -o "$KV_NAME" || true)
@@ -117,13 +126,30 @@ fi
 echo -e "${BLUE}KV ID: ${KV_ID}${NC}"
 
 # ============================================
-# Step 3: Create production config
+# Step 3: Update Worker Configurations
 # ============================================
-echo -e "\n${YELLOW}[3/6] Creating production config...${NC}"
+echo -e "\n${YELLOW}[3/7] Creating worker configurations...${NC}"
 
-cat > wrangler.prod.jsonc <<EOF
+# Function to get zone name from domain
+get_zone_name() {
+  local domain="$1"
+  if [ -z "$domain" ]; then
+    echo ""
+    return
+  fi
+  # Extract zone name (domain without subdomain)
+  local zone=$(echo "$domain" | sed 's/.*\.\([^.]*\.[^.]*\)$/\1/')
+  if [ "$zone" = "$domain" ]; then
+    echo "$domain"
+  else
+    echo "$zone"
+  fi
+}
+
+# Create Proxy Worker config
+cat > workers/proxy/wrangler.prod.jsonc <<EOF
 {
-  "name": "agate",
+  "name": "agate-proxy",
   "compatibility_date": "2024-01-01",
   "main": "src/index.ts",
   "compatibility_flags": ["nodejs_compat"],
@@ -161,57 +187,116 @@ cat > wrangler.prod.jsonc <<EOF
   }
 EOF
 
-# Add custom domain route if provided
-if [ -n "$CUSTOM_DOMAIN" ]; then
-  # Extract zone name (domain without subdomain)
-  ZONE_NAME=$(echo "$CUSTOM_DOMAIN" | sed 's/.*\.\([^.]*\.[^.]*\)$/\1/')
-  if [ "$ZONE_NAME" = "$CUSTOM_DOMAIN" ]; then
-    ZONE_NAME="$CUSTOM_DOMAIN"
-  fi
+# Create Admin Worker config
+cat > workers/admin/wrangler.prod.jsonc <<EOF
+{
+  "name": "agate-admin",
+  "compatibility_date": "2024-01-01",
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
 
-  # Add routes to config
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "$DB_NAME",
+      "database_id": "$DB_ID"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": "$KV_ID",
+      "preview_id": "$KV_PREVIEW_ID"
+    }
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "production"
+  },
+
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": ["**/*.ts"],
+      "fallthrough": true
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+EOF
+
+# Add routes to configs if domains are provided
+if [ -n "$PROXY_DOMAIN" ]; then
+  ZONE_NAME=$(get_zone_name "$PROXY_DOMAIN")
   TEMP_FILE=$(mktemp)
-  jq --arg domain "$CUSTOM_DOMAIN" --arg zone "$ZONE_NAME" \
+  jq --arg domain "$PROXY_DOMAIN" --arg zone "$ZONE_NAME" \
     '.routes = [{"pattern": "\($domain)/*", "zone_name": "\($zone)"}]' \
-    wrangler.prod.jsonc > "$TEMP_FILE"
-  mv "$TEMP_FILE" wrangler.prod.jsonc
-
-  echo -e "${GREEN}Custom domain: $CUSTOM_DOMAIN${NC}"
-  echo -e "${BLUE}Zone: $ZONE_NAME${NC}"
-else
-  echo -e "${YELLOW}No custom domain - using *.workers.dev domain${NC}"
+    workers/proxy/wrangler.prod.jsonc > "$TEMP_FILE"
+  mv "$TEMP_FILE" workers/proxy/wrangler.prod.jsonc
+  echo -e "${GREEN}Proxy domain: $PROXY_DOMAIN (zone: $ZONE_NAME)${NC}"
 fi
 
-echo -e "${GREEN}Config created${NC}"
+if [ -n "$ADMIN_DOMAIN" ]; then
+  ZONE_NAME=$(get_zone_name "$ADMIN_DOMAIN")
+  TEMP_FILE=$(mktemp)
+  jq --arg domain "$ADMIN_DOMAIN" --arg zone "$ZONE_NAME" \
+    '.routes = [{"pattern": "\($domain)/*", "zone_name": "\($zone)"}]' \
+    workers/admin/wrangler.prod.jsonc > "$TEMP_FILE"
+  mv "$TEMP_FILE" workers/admin/wrangler.prod.jsonc
+  echo -e "${GREEN}Admin domain: $ADMIN_DOMAIN (zone: $ZONE_NAME)${NC}"
+fi
+
+if [ -z "$PROXY_DOMAIN" ] && [ -z "$ADMIN_DOMAIN" ]; then
+  echo -e "${YELLOW}No custom domains - using *.workers.dev domains${NC}"
+fi
+
+echo -e "${GREEN}Worker configs created${NC}"
 
 # ============================================
 # Step 4: Deploy database schema
 # ============================================
-echo -e "\n${YELLOW}[4/6] Deploying database schema...${NC}"
+echo -e "\n${YELLOW}[4/7] Deploying database schema...${NC}"
 
-wrangler d1 execute "$DB_NAME" --file=./src/db/schema.sql --config wrangler.prod.jsonc
+# Use proxy worker's config for DB operations
+wrangler d1 execute "$DB_NAME" --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc
 echo -e "${GREEN}Database schema deployed${NC}"
 
-# Seed initial data (optional, but recommended)
+# Seed initial data
 echo -e "${BLUE}Seeding initial data...${NC}"
-wrangler d1 execute "$DB_NAME" --file=./scripts/seed-data.sql --config wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Seed data skipped${NC}"
+wrangler d1 execute "$DB_NAME" --file=./scripts/seed-data.sql --config workers/proxy/wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Seed data skipped${NC}"
 
 # ============================================
-# Step 5: Deploy Worker
+# Step 5: Deploy Proxy Worker
 # ============================================
-echo -e "\n${YELLOW}[5/6] Deploying Worker...${NC}"
+echo -e "\n${YELLOW}[5/7] Deploying Proxy Worker...${NC}"
 
+cd workers/proxy
 wrangler deploy --config wrangler.prod.jsonc
+cd ../..
 
-echo -e "${GREEN}Worker deployed${NC}"
+echo -e "${GREEN}Proxy Worker deployed${NC}"
 
 # ============================================
-# Step 6: Initialize Super Admin API Key
+# Step 6: Deploy Admin Worker
 # ============================================
-echo -e "\n${YELLOW}[6/6] Initializing Super Admin API Key...${NC}"
+echo -e "\n${YELLOW}[6/7] Deploying Admin Worker...${NC}"
 
-# Run the init script and capture output
-INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config wrangler.prod.jsonc 2>&1)
+cd workers/admin
+wrangler deploy --config wrangler.prod.jsonc
+cd ../..
+
+echo -e "${GREEN}Admin Worker deployed${NC}"
+
+# ============================================
+# Step 7: Initialize Super Admin API Key
+# ============================================
+echo -e "\n${YELLOW}[7/7] Initializing Super Admin API Key...${NC}"
+
+# Run the init script and capture output (use admin worker's config)
+INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc 2>&1)
 
 echo "$INIT_OUTPUT"
 
@@ -225,20 +310,27 @@ echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}Deployment Complete!${NC}"
 echo -e "${GREEN}========================================${NC}"
 
-# Get the worker URL
-WORKER_URL="https://agate.${ACCOUNT_ID}.workers.dev"
+# Get the worker URLs
+PROXY_WORKER_URL="https://agate-proxy.${ACCOUNT_ID}.workers.dev"
+ADMIN_WORKER_URL="https://agate-admin.${ACCOUNT_ID}.workers.dev"
 
-if [ -n "$CUSTOM_DOMAIN" ]; then
-  WORKER_URL="https://${CUSTOM_DOMAIN}"
+if [ -n "$PROXY_DOMAIN" ]; then
+  PROXY_WORKER_URL="https://${PROXY_DOMAIN}"
+fi
+
+if [ -n "$ADMIN_DOMAIN" ]; then
+  ADMIN_WORKER_URL="https://${ADMIN_DOMAIN}"
 fi
 
 echo -e "\n${BLUE}Your Gateway is live at:${NC}"
-echo -e "${GREEN}$WORKER_URL${NC}"
+echo -e "${GREEN}Proxy:  $PROXY_WORKER_URL${NC}"
+echo -e "${GREEN}Admin:  $ADMIN_WORKER_URL${NC}"
 
 echo -e "\n${YELLOW}Next steps:${NC}"
-echo -e "1. Test health check: ${GREEN}curl $WORKER_URL/health${NC}"
-echo -e "2. Test admin access: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $WORKER_URL/admin/keys${NC}"
-echo -e "3. Configure your custom domain DNS (if applicable)"
+echo -e "1. Test health check: ${GREEN}curl $PROXY_WORKER_URL/health${NC}"
+echo -e "2. Test admin access: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $ADMIN_WORKER_URL/admin/keys${NC}"
+echo -e "3. Test proxy API: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $PROXY_WORKER_URL/v1/models${NC}"
+echo -e "4. Configure your custom domain DNS (if applicable)"
 echo -e "\n${RED}IMPORTANT: Save your admin API key!${NC}"
 echo -e "${GREEN}$ADMIN_KEY${NC}"
 echo -e "${RED}It is also saved in .admin-api-key${NC}"
@@ -250,7 +342,8 @@ Date: $(date)
 Account ID: $ACCOUNT_ID
 Database ID: $DB_ID
 KV ID: $KV_ID
-Worker URL: $WORKER_URL
+Proxy Worker URL: $PROXY_WORKER_URL
+Admin Worker URL: $ADMIN_WORKER_URL
 Admin API Key: $ADMIN_KEY
 EOF
 

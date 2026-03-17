@@ -15,16 +15,18 @@ import {
 
 describe("API Keys API", () => {
   let apiClient: ApiClient;
-  let baseUrl: string;
+  let adminBaseUrl: string;
+  let proxyBaseUrl: string;
   let adminApiKey: string;
   let testCompanyId: string;
   let testDeptId: string;
   let testUserId: string;
 
   beforeAll(async () => {
-    baseUrl = process.env.TEST_BASE_URL || "http://localhost:8787";
+    adminBaseUrl = process.env.TEST_ADMIN_BASE_URL || "http://localhost:8788";
+    proxyBaseUrl = process.env.TEST_PROXY_BASE_URL || "http://localhost:8787";
     adminApiKey = process.env.TEST_ADMIN_API_KEY || "sk-admin_dev_fixed_key_local_2024";
-    apiClient = new ApiClient(baseUrl, adminApiKey);
+    apiClient = new ApiClient(adminBaseUrl, proxyBaseUrl, adminApiKey);
 
     // 使用现有的 demo 数据
     testCompanyId = "co_demo_company";

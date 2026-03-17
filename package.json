@@ -2,12 +2,22 @@
   "name": "agate",
   "version": "0.1.0",
   "description": "Agate — Your AI Gateway for proxying Anthropic API requests with multi-tenant management",
-  "main": "src/index.ts",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "workers/*"
+  ],
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "deploy:prod": "wrangler deploy --config wrangler.prod.jsonc",
+    "dev": "npm run dev:all",
+    "dev:all": "npm-run-all --parallel dev:proxy dev:admin",
+    "dev:proxy": "npm run dev --workspace=workers/proxy",
+    "dev:admin": "npm run dev --workspace=workers/admin",
+    "deploy": "npm run deploy:all",
+    "deploy:all": "npm run deploy:proxy && npm run deploy:admin",
+    "deploy:proxy": "npm run deploy --workspace=workers/proxy",
+    "deploy:admin": "npm run deploy --workspace=workers/admin",
+    "deploy:proxy:prod": "cd workers/proxy && wrangler deploy --config wrangler.prod.jsonc",
+    "deploy:admin:prod": "cd workers/admin && wrangler deploy --config wrangler.prod.jsonc",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
@@ -16,13 +26,17 @@
     "test:functional": "vitest tests/functional",
     "test:functional:coverage": "vitest tests/functional --coverage",
     "smoke-test": "bash scripts/smoke-test.sh",
-    "db:migrate": "wrangler d1 execute agate-db --file=./src/db/schema.sql",
-    "db:migrate:local": "wrangler d1 execute agate-db --file=./src/db/schema.sql --local",
-    "db:seed": "wrangler d1 execute agate-db --file=./scripts/seed-data.sql",
-    "db:seed:local": "wrangler d1 execute agate-db --file=./scripts/seed-data.sql --local",
-    "db:query": "wrangler d1 execute agate-db --command",
-    "db:query:local": "wrangler d1 execute agate-db --command --local",
-    "typecheck": "tsc --noEmit"
+    "smoke-test:local": "bash scripts/smoke-test.sh http://localhost:8787 http://localhost:8788",
+    "db:migrate": "wrangler d1 execute ai-gateway-db --file=./packages/shared/src/db/schema.sql",
+    "db:migrate:local": "wrangler d1 execute ai-gateway-db --file=./packages/shared/src/db/schema.sql --local",
+    "db:seed": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql",
+    "db:seed:local": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql --local",
+    "db:query": "wrangler d1 execute ai-gateway-db --command",
+    "db:query:local": "wrangler d1 execute ai-gateway-db --command --local",
+    "typecheck": "tsc --noEmit",
+    "typecheck:proxy": "npm run typecheck --workspace=workers/proxy",
+    "typecheck:admin": "npm run typecheck --workspace=workers/admin",
+    "typecheck:all": "npm run typecheck --workspaces"
   },
   "keywords": [
     "agate",
@@ -32,11 +46,9 @@
   ],
   "author": "",
   "license": "MIT",
-  "dependencies": {
-    "@cloudflare/workers-types": "^4.20241127.0"
-  },
   "devDependencies": {
     "@vitest/ui": "^2.1.8",
+    "npm-run-all": "^4.1.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
     "wrangler": "^3.94.0"

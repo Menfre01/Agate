@@ -1,0 +1,20 @@
+{
+  "name": "@agate/admin-worker",
+  "version": "0.1.0",
+  "description": "Agate Admin Worker - Management API for AI Gateway",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --persist-to=../proxy/.wrangler/state",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agate/shared": "workspace:*",
+    "@cloudflare/workers-types": "^4.20241127.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "wrangler": "^3.94.0"
+  }
+}

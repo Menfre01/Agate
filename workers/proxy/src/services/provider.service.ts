@@ -1,0 +1,547 @@
+/**
+ * Provider Service for AI provider management.
+ *
+ * Handles provider CRUD operations, credential management,
+ * and load balancing for multi-credential scenarios.
+ *
+ * @module services/provider
+ */
+
+import type {
+  Provider,
+  ProviderCredential,
+  CreateProviderDto,
+  UpdateProviderDto,
+  AddProviderCredentialDto,
+  ProviderResponse,
+  ProviderCredentialResponse,
+  Env,
+} from "@agate/shared/types";
+import * as queries from "@agate/shared/db/queries.js";
+import { generateId } from "@agate/shared/utils/id-generator.js";
+import { NotFoundError, ValidationError } from "@agate/shared/utils/errors/index.js";
+
+/**
+ * Selected provider and credential for proxying.
+ */
+export interface SelectedCredential {
+  /** Provider ID */
+  providerId: string;
+  /** Provider name */
+  providerName: string;
+  /** Provider base URL */
+  baseUrl: string;
+  /** Provider API version */
+  apiVersion: string | null;
+  /** Credential ID */
+  credentialId: string;
+  /** Decrypted API key for upstream request */
+  apiKey: string;
+}
+
+/**
+ * Provider Service class.
+ *
+ * @example
+ * ```ts
+ * const provider = new ProviderService(env);
+ *
+ * // Create a new provider
+ * const response = await provider.createProvider({
+ *   name: "anthropic",
+ *   display_name: "Anthropic",
+ *   base_url: "https://api.anthropic.com",
+ * });
+ *
+ * // Select credential for request
+ * const credential = await provider.selectCredential("model-123", "api-key-456");
+ * ```
+ */
+export class ProviderService {
+  private readonly db: D1Database;
+  private readonly encryptionKey: string;
+
+  /**
+   * Creates a new ProviderService instance.
+   *
+   * @param env - Cloudflare Workers environment
+   */
+  constructor(env: Env) {
+    this.db = env.DB;
+    this.encryptionKey = env.ENCRYPTION_KEY ?? "default-key";
+  }
+
+  /**
+   * Lists all providers.
+   *
+   * @returns Array of provider responses
+   */
+  async listProviders(): Promise<ProviderResponse[]> {
+    const providers = await queries.listProviders(this.db);
+
+    // Count credentials for each provider
+    const results = await Promise.all(
+      providers.map(async (provider) => {
+        const credentials = await queries.listProviderCredentials(
+          this.db,
+          provider.id
+        );
+        const activeCount = credentials.filter((c) => c.is_active).length;
+
+        return this.toResponse(provider, activeCount);
+      })
+    );
+
+    return results;
+  }
+
+  /**
+   * Gets a provider by ID.
+   *
+   * @param id - Provider ID
+   * @returns Provider response
+   * @throws {NotFoundError} If provider not found
+   */
+  async getProvider(id: string): Promise<ProviderResponse> {
+    const provider = await queries.getProvider(this.db, id);
+    if (!provider) {
+      throw new NotFoundError("Provider", id);
+    }
+
+    const credentials = await queries.listProviderCredentials(this.db, id);
+    const activeCount = credentials.filter((c) => c.is_active).length;
+
+    return this.toResponse(provider, activeCount);
+  }
+
+  /**
+   * Creates a new provider.
+   *
+   * @param dto - Create provider data
+   * @returns Created provider response
+   * @throws {ValidationError} If validation fails
+   * @throws {ConflictError} If provider name already exists
+   */
+  async createProvider(dto: CreateProviderDto): Promise<ProviderResponse> {
+    // Validate base_url format
+    try {
+      new URL(dto.base_url);
+    } catch {
+      throw new ValidationError("Invalid base URL format", {
+        base_url: dto.base_url,
+      });
+    }
+
+    const now = Date.now();
+    const provider: Provider = {
+      id: generateId(),
+      name: dto.name,
+      display_name: dto.display_name,
+      base_url: dto.base_url,
+      api_version: dto.api_version ?? null,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    };
+
+    await queries.createProvider(this.db, provider);
+
+    return this.toResponse(provider, 0);
+  }
+
+  /**
+   * Updates a provider.
+   *
+   * @param id - Provider ID
+   * @param dto - Update data
+   * @returns Updated provider response
+   * @throws {NotFoundError} If provider not found
+   */
+  async updateProvider(
+    id: string,
+    dto: UpdateProviderDto
+  ): Promise<ProviderResponse> {
+    const existing = await queries.getProvider(this.db, id);
+    if (!existing) {
+      throw new NotFoundError("Provider", id);
+    }
+
+    // Validate base_url if provided
+    if (dto.base_url) {
+      try {
+        new URL(dto.base_url);
+      } catch {
+        throw new ValidationError("Invalid base URL format", {
+          base_url: dto.base_url,
+        });
+      }
+    }
+
+    const updated = await queries.updateProvider(this.db, id, {
+      display_name: dto.display_name,
+      base_url: dto.base_url,
+      api_version: dto.api_version,
+      is_active: dto.is_active,
+    });
+
+    const credentials = await queries.listProviderCredentials(this.db, id);
+    const activeCount = credentials.filter((c) => c.is_active).length;
+
+    return this.toResponse(updated, activeCount);
+  }
+
+  /**
+   * Deletes a provider.
+   *
+   * @param id - Provider ID
+   * @throws {NotFoundError} If provider not found
+   */
+  async deleteProvider(id: string): Promise<void> {
+    const existing = await queries.getProvider(this.db, id);
+    if (!existing) {
+      throw new NotFoundError("Provider", id);
+    }
+
+    // Check if provider has active credentials
+    const credentials = await queries.listProviderCredentials(this.db, id);
+    if (credentials.length > 0) {
+      throw new ValidationError(
+        "Cannot delete provider with active credentials",
+        { credential_count: String(credentials.length) }
+      );
+    }
+
+    await queries.deleteProvider(this.db, id);
+  }
+
+  /**
+   * Lists credentials for a provider.
+   *
+   * @param providerId - Provider ID
+   * @returns Array of credential responses
+   */
+  async listCredentials(
+    providerId: string
+  ): Promise<ProviderCredentialResponse[]> {
+    const credentials = await queries.listProviderCredentials(
+      this.db,
+      providerId
+    );
+
+    return credentials.map((c) => ({
+      id: c.id,
+      credential_name: c.credential_name,
+      base_url: c.base_url ?? null,
+      is_active: Boolean(c.is_active),
+      priority: c.priority,
+      weight: c.weight,
+      health_status: c.health_status,
+      last_health_check: c.last_health_check,
+      created_at: c.created_at,
+    }));
+  }
+
+  /**
+   * Adds a credential to a provider.
+   *
+   * @param providerId - Provider ID
+   * @param dto - Credential data
+   * @returns Created credential response
+   * @throws {NotFoundError} If provider not found
+   * @throws {ValidationError} If base_url format is invalid
+   */
+  async addCredential(
+    providerId: string,
+    dto: AddProviderCredentialDto
+  ): Promise<ProviderCredentialResponse> {
+    const provider = await queries.getProvider(this.db, providerId);
+    if (!provider) {
+      throw new NotFoundError("Provider", providerId);
+    }
+
+    // Validate base_url format if provided
+    if (dto.base_url) {
+      try {
+        new URL(dto.base_url);
+      } catch {
+        throw new ValidationError("Invalid base URL format", {
+          base_url: dto.base_url,
+        });
+      }
+    }
+
+    // Encrypt the API key
+    let encryptedKey: string;
+    try {
+      encryptedKey = await this.encryptApiKey(dto.api_key);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new ValidationError(`Failed to encrypt API key: ${errorMessage}`, {
+        original_error: errorMessage,
+      });
+    }
+
+    const now = Date.now();
+    const credential: ProviderCredential = {
+      id: generateId(),
+      provider_id: providerId,
+      credential_name: dto.credential_name,
+      api_key_encrypted: encryptedKey,
+      base_url: dto.base_url ?? null,
+      is_active: true,
+      priority: dto.priority ?? 0,
+      weight: dto.weight ?? 1,
+      health_status: "unknown",
+      last_health_check: null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    await queries.createProviderCredential(this.db, credential);
+
+    return {
+      id: credential.id,
+      credential_name: credential.credential_name,
+      base_url: credential.base_url,
+      is_active: Boolean(credential.is_active),
+      priority: credential.priority,
+      weight: credential.weight,
+      health_status: credential.health_status,
+      last_health_check: credential.last_health_check,
+      created_at: credential.created_at,
+    };
+  }
+
+  /**
+   * Deletes a provider credential.
+   *
+   * @param credentialId - Credential ID
+   * @throws {NotFoundError} If credential not found
+   */
+  async deleteCredential(credentialId: string): Promise<void> {
+    const existing = await queries.getProviderCredential(this.db, credentialId);
+    if (!existing) {
+      throw new NotFoundError("Credential", credentialId);
+    }
+
+    await queries.deleteProviderCredential(this.db, credentialId);
+  }
+
+  /**
+   * Updates credential health status.
+   *
+   * @param credentialId - Credential ID
+   * @param status - New health status
+   */
+  async updateHealthStatus(
+    credentialId: string,
+    status: "healthy" | "unhealthy" | "unknown"
+  ): Promise<void> {
+    await queries.updateCredentialHealth(this.db, credentialId, status);
+  }
+
+  /**
+   * Selects a credential for a model request using cross-provider load balancing.
+   *
+   * Selection process (two-layer):
+   * 1. Get all active providers for the model (from model_providers)
+   * 2. Hash by apiKeyId + modelId to select provider
+   * 3. Hash by apiKeyId to select credential within provider
+   *
+   * Base URL resolution: credential.base_url (if set) → provider.base_url (fallback)
+   *
+   * @param modelId - Model ID
+   * @param apiKeyId - API Key ID for consistent hashing
+   * @returns Selected credential
+   * @throws {NotFoundError} If no valid credentials found
+   */
+  async selectCredential(
+    modelId: string,
+    apiKeyId: string
+  ): Promise<SelectedCredential> {
+    // 1. Get all active providers for this model
+    const modelProviders = await queries.getActiveProvidersForModel(this.db, modelId);
+
+    if (modelProviders.length === 0) {
+      throw new Error("No active providers found for model");
+    }
+
+    // 2. Select provider using consistent hash (cross-provider load balancing)
+    const selectedProvider = this.consistentHashObject(
+      modelProviders,
+      `${apiKeyId}:${modelId}`
+    ) as { provider_id: string; is_active: boolean };
+
+    // 3. Get provider details
+    const provider = await queries.getProvider(this.db, selectedProvider.provider_id);
+    if (!provider || !provider.is_active) {
+      throw new Error("Provider not found or inactive");
+    }
+
+    // 4. Get active credentials for selected provider
+    const credentials = await queries.listProviderCredentials(this.db, provider.id);
+    const activeCredentials = credentials.filter(
+      (c) => c.is_active && c.health_status !== "unhealthy"
+    );
+
+    if (activeCredentials.length === 0) {
+      throw new Error("No active credentials found for provider");
+    }
+
+    // 5. Select credential using consistent hash (credential-level load balancing)
+    const credential = this.consistentHashObject(activeCredentials, apiKeyId);
+
+    // 6. Decrypt API key
+    const apiKey = await this.decryptApiKey(credential.api_key_encrypted);
+
+    // 7. Resolve base URL: credential-level takes precedence over provider-level
+    const baseUrl = credential.base_url ?? provider.base_url;
+
+    return {
+      providerId: provider.id,
+      providerName: provider.name,
+      baseUrl,
+      apiVersion: provider.api_version,
+      credentialId: credential.id,
+      apiKey,
+    };
+  }
+
+  /**
+   * Encrypts an API key using the encryption secret.
+   *
+   * @param apiKey - Plain API key
+   * @returns Encrypted API key (hex string)
+   */
+  private async encryptApiKey(apiKey: string): Promise<string> {
+    const encoder = new TextEncoder();
+    // Derive a 256-bit key from the encryption key using SHA-256
+    const keyData = encoder.encode(this.encryptionKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", keyData);
+    const keyBytes = new Uint8Array(hashBuffer);
+    const dataBytes = encoder.encode(apiKey);
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      dataBytes
+    );
+
+    // Combine IV and encrypted data
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encrypted), iv.length);
+
+    return Array.from(combined)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * Decrypts an API key using the encryption secret.
+   *
+   * @param encrypted - Hex-encoded encrypted key
+   * @returns Decrypted API key
+   */
+  private async decryptApiKey(encrypted: string): Promise<string> {
+    const combined = Uint8Array.from(
+      { length: encrypted.length / 2 },
+      (_, i) => Number.parseInt(encrypted.slice(i * 2, i * 2 + 2), 16)
+    );
+
+    const iv = combined.slice(0, 12);
+    const encryptedData = combined.slice(12);
+
+    const encoder = new TextEncoder();
+    // Derive the same 256-bit key from the encryption key using SHA-256
+    const keyData = encoder.encode(this.encryptionKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", keyData);
+    const keyBytes = new Uint8Array(hashBuffer);
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"]
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encryptedData
+    );
+
+    return new TextDecoder().decode(decrypted);
+  }
+
+  /**
+   * Consistent hash selection from an array of objects.
+   *
+   * @param objects - Array of objects to select from
+   * @param seed - Seed value for hashing
+   * @returns Selected object
+   */
+  private consistentHashObject<T>(objects: T[], seed: string): T {
+    let bestObject: T | undefined = objects[0];
+    let bestHash = BigInt(0);
+
+    for (const obj of objects) {
+      const combined = `${seed}:${JSON.stringify(obj)}`;
+      const hash = this.hashCode(combined);
+      if (hash > bestHash) {
+        bestHash = hash;
+        bestObject = obj;
+      }
+    }
+
+    return bestObject!;
+  }
+
+  /**
+   * Simple hash function for consistent hashing.
+   *
+   * @param str - String to hash
+   * @returns Hash value as BigInt
+   */
+  private hashCode(str: string): bigint {
+    let hash = 0n;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31n + BigInt(str.charCodeAt(i))) & 0xffffffffn;
+    }
+    return hash;
+  }
+
+  /**
+   * Converts Provider entity to API response.
+   *
+   * @param provider - Provider entity
+   * @param credentialCount - Number of active credentials
+   * @returns Provider response DTO
+   */
+  private toResponse(
+    provider: Provider,
+    credentialCount: number
+  ): ProviderResponse {
+    return {
+      id: provider.id,
+      name: provider.name,
+      display_name: provider.display_name,
+      base_url: provider.base_url,
+      api_version: provider.api_version,
+      is_active: Boolean(provider.is_active),
+      credential_count: credentialCount,
+      created_at: provider.created_at,
+      updated_at: provider.updated_at,
+    };
+  }
+}

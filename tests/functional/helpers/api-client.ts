@@ -37,12 +37,24 @@ export interface ApiResponse<T = unknown> {
  * API 客户端类
  */
 export class ApiClient {
-  private baseUrl: string;
+  private adminBaseUrl: string;
+  private proxyBaseUrl: string;
   private defaultApiKey: string;
 
-  constructor(baseUrl: string, adminApiKey: string) {
-    this.baseUrl = baseUrl;
+  constructor(adminBaseUrl: string, proxyBaseUrl: string, adminApiKey: string) {
+    this.adminBaseUrl = adminBaseUrl;
+    this.proxyBaseUrl = proxyBaseUrl;
     this.defaultApiKey = adminApiKey;
+  }
+
+  /**
+   * 根据端点选择合适的 base URL
+   */
+  private getBaseUrl(endpoint: string): string {
+    if (endpoint.startsWith("/v1/")) {
+      return this.proxyBaseUrl;
+    }
+    return this.adminBaseUrl;
   }
 
   // ========================================
@@ -55,7 +67,8 @@ export class ApiClient {
     body?: unknown,
     apiKey?: string
   ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const baseUrl = this.getBaseUrl(endpoint);
+    const url = `${baseUrl}${endpoint}`;
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };

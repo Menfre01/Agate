@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { CacheService, CACHE_TTL } from "@/services/cache.service.js";
+import { CacheService, CACHE_TTL } from "@agate/shared/services/cache.service.js";
 import type { ApiKey } from "@/types/index.js";
 
 /**

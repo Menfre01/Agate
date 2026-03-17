@@ -1,0 +1,50 @@
+{
+  "name": "agate-admin",
+  "compatibility_date": "2024-01-01",
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ai-gateway-db",
+      "database_id": "local"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": "local",
+      "preview_id": "local"
+    }
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "development"
+  },
+
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": ["**/*.ts"],
+      "fallthrough": true
+    }
+  ],
+
+  "dev": {
+    "port": 8788,
+    "local_protocol": "http"
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  "routes": [
+    {
+      "pattern": "admin.your-gateway.example.com/*",
+      "zone_name": "example.com"
+    }
+  ]
+}

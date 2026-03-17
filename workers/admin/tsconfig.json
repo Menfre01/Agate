@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "baseUrl": "../../",
+    "paths": {
+      "@agate/shared": ["packages/shared/src"],
+      "@agate/shared/*": ["packages/shared/src/*"],
+      "@agate/admin": ["workers/admin/src"],
+      "@agate/admin/*": ["workers/admin/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
