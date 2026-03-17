@@ -21,6 +21,18 @@ import {
 import { withResponseLogging, logError } from "@agate/shared/middleware/logger.js";
 
 /**
+ * System user IDs that cannot be modified or deleted.
+ */
+const SYSTEM_USER_IDS = ["sys-health-user"];
+
+/**
+ * Checks if a user ID is a system user.
+ */
+function isSystemUser(userId: string): boolean {
+  return SYSTEM_USER_IDS.includes(userId);
+}
+
+/**
  * Handles GET /admin/users - List users.
  */
 export async function listUsers(
@@ -41,8 +53,14 @@ export async function listUsers(
     users = await queries.listAllUsers(env.DB);
   }
 
+  // Add is_system flag for system users
+  const usersWithSystemFlag = users.map((user: any) => ({
+    ...user,
+    is_system: isSystemUser(user.id),
+  }));
+
   return withResponseLogging(
-    Response.json({ users }),
+    Response.json({ users: usersWithSystemFlag }),
     context
   );
 }
@@ -118,7 +136,13 @@ export async function getUser(
     throw new NotFoundError("User", id);
   }
 
-  return withResponseLogging(Response.json(user), context);
+  // Add is_system flag for system users
+  const userWithSystemFlag = {
+    ...user,
+    is_system: isSystemUser(id),
+  };
+
+  return withResponseLogging(Response.json(userWithSystemFlag), context);
 }
 
 /**
@@ -130,6 +154,11 @@ export async function updateUser(
   context: RequestContext,
   id: string
 ): Promise<Response> {
+  // Prevent modification of system users
+  if (isSystemUser(id)) {
+    throw new ValidationError("System users cannot be modified");
+  }
+
   const body = await request.json() as UpdateUserDto;
   const user = await queries.updateUser(env.DB, id, body);
 
@@ -145,6 +174,11 @@ export async function deleteUser(
   context: RequestContext,
   id: string
 ): Promise<Response> {
+  // Prevent deletion of system users
+  if (isSystemUser(id)) {
+    throw new ValidationError("System users cannot be deleted");
+  }
+
   // Check if user exists
   const user = await queries.getUser(env.DB, id);
   if (!user) {

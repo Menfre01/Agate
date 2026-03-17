@@ -108,8 +108,9 @@ export async function triggerCredentialHealthCheck(
 
   if (!systemApiKeyResult) {
     throw new ApiError(
-      "System user API key not found. Please create a system user first.",
-      500
+      500,
+      "SYSTEM_USER_NOT_FOUND",
+      "System user API key not found. Please create a system user first."
     );
   }
 
@@ -267,7 +268,7 @@ export function healthCheckRouteHandler(
   // POST /admin/providers/credentials/:id/health-check
   const credentialCheckMatch = pathname.match(/^\/admin\/providers\/credentials\/([^/]+)\/health-check$/);
   if (credentialCheckMatch && request.method === "POST") {
-    return triggerCredentialHealthCheck(request, env, context, credentialCheckMatch[1]);
+    return triggerCredentialHealthCheck(request, env, context, credentialCheckMatch[1]!);
   }
 
   // GET /admin/stats/health-check

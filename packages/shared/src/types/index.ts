@@ -1107,6 +1107,10 @@ export interface Env {
   ENCRYPTION_KEY?: string;
   /** Environment configuration */
   ENVIRONMENT: string;
+  /** System user ID for health check operations */
+  SYSTEM_USER_ID?: string;
+  /** System company ID for health check operations */
+  SYSTEM_COMPANY_ID?: string;
 }
 
 /**
