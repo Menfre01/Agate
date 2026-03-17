@@ -26,6 +26,10 @@ import { companiesRouteHandler } from "@/api/admin/companies.js";
 import { departmentsRouteHandler } from "@/api/admin/departments.js";
 import { usersRouteHandler } from "@/api/admin/users.js";
 
+// User API handlers
+import { userAuthRouteHandler } from "@/api/user/auth.js";
+import { userStatsRouteHandler } from "@/api/user/stats.js";
+
 /**
  * Creates request context from incoming request.
  *
@@ -129,6 +133,13 @@ export default {
 
       // Admin API routes
       response = await authRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
+      // User API routes
+      response = await userAuthRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
+      response = await userStatsRouteHandler(request, env, context);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       response = await companiesRouteHandler(request, env, context);

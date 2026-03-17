@@ -85,6 +85,7 @@ export function createAuthMiddleware(env: Env) {
       }
 
       context.auth = authContext;
+      context.metadata.set("auth", authContext);
     }
   };
 }

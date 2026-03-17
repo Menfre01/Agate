@@ -69,7 +69,7 @@ export function createAuthMiddleware(env: Env) {
     }
 
     // Skip authentication for public proxy endpoints (handled downstream)
-    // Admin endpoints always require authentication
+    // Admin endpoints require authentication + admin role
     if (url.pathname.startsWith("/admin/")) {
       const apiKey = extractApiKey(request);
 
@@ -85,6 +85,21 @@ export function createAuthMiddleware(env: Env) {
       }
 
       context.auth = authContext;
+      context.metadata.set("auth", authContext);
+    }
+
+    // User endpoints require authentication but not admin role
+    if (url.pathname.startsWith("/user/")) {
+      const apiKey = extractApiKey(request);
+
+      if (!apiKey) {
+        throw new UnauthorizedError("Missing API key");
+      }
+
+      const authContext = await authService.validateApiKey(apiKey);
+      // Normal users can access their own data
+      context.auth = authContext;
+      context.metadata.set("auth", authContext);
     }
   };
 }
