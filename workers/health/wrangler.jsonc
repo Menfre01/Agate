@@ -1,0 +1,53 @@
+{
+  "name": "agate-health",
+  "compatibility_date": "2024-01-01",
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ai-gateway-db",
+      "database_id": "local"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": "local",
+      "preview_id": "local"
+    }
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "development",
+    "SYSTEM_USER_ID": "sys-health-user",
+    "SYSTEM_COMPANY_ID": "sys-health"
+  },
+
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": ["**/*.ts"],
+      "fallthrough": true
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  },
+
+  "triggers": [
+    {
+      "cron": "*/5 * * * *"
+    }
+  ],
+
+  "routes": [
+    {
+      "pattern": "health.your-gateway.example.com/*",
+      "zone_name": "example.com"
+    }
+  ]
+}

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@agate/shared": "workspace:*",
+    "@agate/health": "workspace:*",
     "@cloudflare/workers-types": "^4.20241127.0"
   },
   "devDependencies": {

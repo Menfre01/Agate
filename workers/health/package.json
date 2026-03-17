@@ -1,0 +1,25 @@
+{
+  "name": "@agate/health",
+  "version": "0.1.0",
+  "description": "Health Check Worker for AI Gateway",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./services/health-check.service.js": "./src/services/health-check.service.ts",
+    "./services/health-check.service": "./src/services/health-check.service.ts"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agate/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.94.0"
+  }
+}

@@ -2341,3 +2341,242 @@ export const getModelStats = async (db: D1Database, options: {
 };
 export const updateApiKeyLastUsed = (db: D1Database, apiKeyId: string) =>
   getQueries(db).updateApiKeyLastUsed(apiKeyId);
+
+// ============================================
+// Health Check Operations
+// ============================================
+
+/**
+ * Get all active credentials for health checking
+ *
+ * @param db - D1 Database
+ * @returns Array of all active credentials with provider info
+ */
+export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
+  id: string;
+  provider_id: string;
+  credential_name: string;
+  api_key_encrypted: string;
+  base_url: string | null;
+  priority: number;
+  weight: number;
+  health_status: string;
+  provider_name: string;
+  provider_base_url: string;
+}>> => {
+  const result = await db.prepare(`
+    SELECT
+      pc.id,
+      pc.provider_id,
+      pc.credential_name,
+      pc.api_key_encrypted,
+      pc.base_url,
+      pc.priority,
+      pc.weight,
+      pc.health_status,
+      p.name as provider_name,
+      p.base_url as provider_base_url
+    FROM provider_credentials pc
+    INNER JOIN providers p ON pc.provider_id = p.id
+    WHERE pc.is_active = 1 AND p.is_active = 1
+    ORDER BY pc.priority DESC, pc.created_at ASC
+  `).all();
+  return result.results as any;
+};
+
+/**
+ * Get health check statistics for a time period
+ *
+ * @param db - D1 Database
+ * @param options - Query options
+ * @returns Health check statistics
+ */
+export const getHealthCheckStats = async (db: D1Database, options: {
+  start_at?: number;
+  end_at?: number;
+}): Promise<{
+  total_checks: number;
+  successful_checks: number;
+  failed_checks: number;
+  total_tokens_used: number;
+}> => {
+  const conditions: string[] = [
+    'api_key_id = (SELECT id FROM api_keys WHERE user_id = ?1 LIMIT 1)'
+  ];
+  const params: any[] = ['sys-health-user'];
+
+  let paramIndex = 2;
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+  const result = await db.prepare(`
+    SELECT
+      COUNT(*) as total_checks,
+      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_checks,
+      SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_checks,
+      SUM(total_tokens) as total_tokens_used
+    FROM usage_logs
+    ${whereClause}
+  `).bind(...params).first();
+
+  return {
+    total_checks: (result?.['total_checks'] as number) ?? 0,
+    successful_checks: (result?.['successful_checks'] as number) ?? 0,
+    failed_checks: (result?.['failed_checks'] as number) ?? 0,
+    total_tokens_used: (result?.['total_tokens_used'] as number) ?? 0,
+  };
+};
+
+/**
+ * Get health check usage logs
+ *
+ * @param db - D1 Database
+ * @param options - Query options
+ * @returns Paginated health check usage logs
+ */
+export const getHealthCheckUsageLogs = async (db: D1Database, options: {
+  start_at?: number;
+  end_at?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  logs: Array<{
+    id: string;
+    provider_id: string;
+    model_name: string;
+    status: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    error_code: string | null;
+    created_at: number;
+  }>;
+  total: number;
+}> => {
+  const conditions: string[] = [
+    'api_key_id = (SELECT id FROM api_keys WHERE user_id = ?1 LIMIT 1)'
+  ];
+  const params: any[] = ['sys-health-user'];
+
+  let paramIndex = 2;
+  if (options.start_at) {
+    conditions.push(`created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+  const limit = options.limit ?? 100;
+  const offset = options.offset ?? 0;
+
+  // Get total count
+  const countResult = await db.prepare(`
+    SELECT COUNT(*) as total FROM usage_logs ${whereClause}
+  `).bind(...params).first();
+  const total = (countResult?.['total'] as number) ?? 0;
+
+  // Get logs
+  params.push(limit, offset);
+  const logsResult = await db.prepare(`
+    SELECT
+      id,
+      provider_id,
+      model_name,
+      status,
+      input_tokens,
+      output_tokens,
+      total_tokens,
+      error_code,
+      created_at
+    FROM usage_logs
+    ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ?${paramIndex++} OFFSET ?${paramIndex++}
+  `).bind(...params).all();
+
+  return {
+    logs: (logsResult.results ?? []) as Array<{
+      id: string;
+      provider_id: string;
+      model_name: string;
+      status: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      error_code: string | null;
+      created_at: number;
+    }>,
+    total,
+  };
+};
+
+/**
+ * Get all credentials health status
+ *
+ * @param db - D1 Database
+ * @returns Array of credentials with health status
+ */
+export const getAllCredentialsHealthStatus = async (db: D1Database): Promise<Array<{
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  credential_name: string;
+  health_status: string;
+  last_health_check: number | null;
+  is_active: boolean;
+}>> => {
+  const result = await db.prepare(`
+    SELECT
+      pc.id,
+      pc.provider_id,
+      p.name as provider_name,
+      pc.credential_name,
+      pc.health_status,
+      pc.last_health_check,
+      pc.is_active
+    FROM provider_credentials pc
+    INNER JOIN providers p ON pc.provider_id = p.id
+    ORDER BY pc.is_active DESC, pc.last_health_check DESC NULLS LAST
+  `).all();
+
+  return result.results.map((row: any) => ({
+    ...row,
+    is_active: Boolean(row.is_active),
+  }));
+};
+
+/**
+ * Get system user quota info
+ *
+ * @param db - D1 Database
+ * @returns System user quota information
+ */
+export const getSystemUserQuota = async (db: D1Database): Promise<{
+  quota_daily: number;
+  quota_used: number;
+  quota_remaining: number;
+} | null> => {
+  const result = await db.prepare(`
+    SELECT quota_daily, quota_used
+    FROM users
+    WHERE id = ?1
+  `).bind('sys-health-user').first<{ quota_daily: number; quota_used: number }>();
+
+  if (!result) return null;
+
+  return {
+    quota_daily: result.quota_daily,
+    quota_used: result.quota_used,
+    quota_remaining: result.quota_daily - result.quota_used,
+  };
+};

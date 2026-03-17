@@ -10,6 +10,7 @@
 import type { RequestContext, Env } from "@agate/shared/types";
 import { createLoggerMiddleware, logError, logResponse } from "@agate/shared/middleware/logger";
 import { createRateLimitMiddleware, withRateLimitHeaders } from "@agate/shared/middleware/ratelimit";
+import { createAuthMiddleware } from "./middleware/auth.js";
 
 // Admin API handlers
 import { authRouteHandler } from "./api/admin/auth.js";
@@ -21,6 +22,7 @@ import { quotasRouteHandler } from "./api/admin/quotas.js";
 import { companiesRouteHandler } from "./api/admin/companies.js";
 import { departmentsRouteHandler } from "./api/admin/departments.js";
 import { usersRouteHandler } from "./api/admin/users.js";
+import { healthCheckRouteHandlerWithErrorHandling } from "./api/admin/health-check.js";
 
 /**
  * Creates request context from incoming request.
@@ -97,6 +99,10 @@ export default {
       await loggerMiddleware(context);
       await rateLimitMiddleware(context, env);
 
+      // Apply authentication middleware for admin routes
+      const authMiddleware = createAuthMiddleware(env);
+      await authMiddleware(context);
+
       // Admin API routes (all require authentication via auth middleware)
       let response = await authRouteHandler(request, env, context);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
@@ -126,6 +132,9 @@ export default {
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       response = await quotasRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
+      response = await healthCheckRouteHandlerWithErrorHandling(request, env, context);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       // 404 for unimplemented routes

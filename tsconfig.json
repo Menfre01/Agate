@@ -49,7 +49,9 @@
       "@agate/proxy": ["workers/proxy/src"],
       "@agate/proxy/*": ["workers/proxy/src/*"],
       "@agate/admin": ["workers/admin/src"],
-      "@agate/admin/*": ["workers/admin/src/*"]
+      "@agate/admin/*": ["workers/admin/src/*"],
+      "@agate/health": ["workers/health/src"],
+      "@agate/health/*": ["workers/health/src/*"]
     }
   },
   "include": [
