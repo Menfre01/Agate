@@ -13,7 +13,10 @@ import type {
   UpdateModelDto,
 } from "@/types/index.js";
 import { ModelService } from "@/services/model.service.js";
-import { ValidationError, NotFoundError } from "@/utils/errors/index.js";
+import {
+  ValidationError,
+  ApiError,
+} from "@/utils/errors/index.js";
 import { withResponseLogging, logError } from "@/middleware/logger.js";
 
 /**
@@ -155,19 +158,19 @@ export function modelsRouteHandler(
       Response.json({ error: "Method not allowed" }, { status: 405 })
     );
   } catch (error) {
+    if (error instanceof ApiError) {
+      logError(context, error);
+      return Promise.resolve(
+        Response.json({ error: error.message }, { status: error.statusCode })
+      );
+    }
     if (error instanceof Error) {
       logError(context, error);
     }
-    const status =
-      error instanceof NotFoundError
-        ? 404
-        : error instanceof ValidationError
-        ? 400
-        : 500;
     return Promise.resolve(
       Response.json(
         { error: error instanceof Error ? error.message : "Unknown error" },
-        { status }
+        { status: 500 }
       )
     );
   }

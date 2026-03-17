@@ -34,6 +34,11 @@ Thumbs.db
 # Temporary files
 *.tmp
 .cache/
+
+# Deployment secrets
+.admin-api-key
+.deployment-info
+wrangler.prod.jsonc
 # Private documentation
 prd.md
 docs/internal/

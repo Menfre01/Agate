@@ -12,7 +12,11 @@ import type {
 } from "@/types/index.js";
 import type { CreateDepartmentDto, UpdateDepartmentDto } from "@/db/queries.js";
 import * as queries from "@/db/queries.js";
-import { ValidationError, NotFoundError } from "@/utils/errors/index.js";
+import {
+  ValidationError,
+  NotFoundError,
+  ApiError,
+} from "@/utils/errors/index.js";
 import { withResponseLogging, logError } from "@/middleware/logger.js";
 
 /**
@@ -60,6 +64,12 @@ export async function createDepartment(
   }
   if (!data.name) {
     throw new ValidationError("Missing required field: name");
+  }
+
+  // Verify company exists
+  const company = await queries.getCompany(env.DB, data.company_id);
+  if (!company) {
+    throw new NotFoundError("Company", data.company_id);
   }
 
   const department = await queries.createDepartment(env.DB, data);
@@ -112,6 +122,20 @@ export async function deleteDepartment(
   context: RequestContext,
   id: string
 ): Promise<Response> {
+  // Check if department exists
+  const department = await queries.getDepartment(env.DB, id);
+  if (!department) {
+    throw new NotFoundError("Department", id);
+  }
+
+  // Check if department has users
+  const users = await queries.listUsersByDepartment(env.DB, id);
+  if (users.length > 0) {
+    throw new ValidationError("Cannot delete department with existing users", {
+      user_count: String(users.length),
+    });
+  }
+
   await queries.deleteDepartment(env.DB, id);
 
   return withResponseLogging(
@@ -135,6 +159,18 @@ export async function setDepartmentModel(
     throw new ValidationError("Missing required field: model_id");
   }
 
+  // Verify department exists
+  const department = await queries.getDepartment(env.DB, id);
+  if (!department) {
+    throw new NotFoundError("Department", id);
+  }
+
+  // Verify model exists
+  const model = await queries.getModel(env.DB, body.model_id);
+  if (!model) {
+    throw new NotFoundError("Model", body.model_id);
+  }
+
   // Check if permission already exists
   const existing = await queries.getDepartmentModel(env.DB, id, body.model_id);
 
@@ -150,7 +186,9 @@ export async function setDepartmentModel(
   }
 
   // Create new permission
+  const { generateId } = await import("@/utils/id-generator.js");
   const created = await queries.createDepartmentModel(env.DB, {
+    id: generateId(),
     department_id: id,
     model_id: body.model_id,
     is_allowed: body.is_allowed ?? true,
@@ -216,19 +254,19 @@ export function departmentsRouteHandler(
       Response.json({ error: "Method not allowed" }, { status: 405 })
     );
   } catch (error) {
+    if (error instanceof ApiError) {
+      logError(context, error);
+      return Promise.resolve(
+        Response.json({ error: error.message }, { status: error.statusCode })
+      );
+    }
     if (error instanceof Error) {
       logError(context, error);
     }
-    const status =
-      error instanceof NotFoundError
-        ? 404
-        : error instanceof ValidationError
-        ? 400
-        : 500;
     return Promise.resolve(
       Response.json(
         { error: error instanceof Error ? error.message : "Unknown error" },
-        { status }
+        { status: 500 }
       )
     );
   }

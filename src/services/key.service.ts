@@ -125,6 +125,8 @@ export class KeyService {
     const keyPrefix = this.authService.extractKeyPrefix(rawKey);
 
     const now = Date.now();
+    // quota_daily=0 表示无限配额
+    const isUnlimited = dto.quota_daily === 0;
     const apiKey: ApiKey = {
       id: generateId(),
       key_hash: keyHash,
@@ -137,7 +139,7 @@ export class KeyService {
       quota_used: 0,
       quota_bonus: 0,
       quota_bonus_expiry: null,
-      is_unlimited: false,
+      is_unlimited: isUnlimited,
       is_active: true,
       last_reset_at: now,
       last_used_at: null,
@@ -351,8 +353,8 @@ export class KeyService {
       quota_daily: key.quota_daily,
       quota_used: key.quota_used,
       quota_bonus: key.quota_bonus,
-      is_unlimited: key.is_unlimited,
-      is_active: key.is_active,
+      is_unlimited: Boolean(key.is_unlimited),
+      is_active: Boolean(key.is_active),
       last_used_at: key.last_used_at,
       expires_at: key.expires_at,
       created_at: key.created_at,

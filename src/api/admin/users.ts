@@ -12,7 +12,12 @@ import type {
 } from "@/types/index.js";
 import type { CreateUserDto, UpdateUserDto } from "@/db/queries.js";
 import * as queries from "@/db/queries.js";
-import { ValidationError, NotFoundError } from "@/utils/errors/index.js";
+import {
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+  ApiError,
+} from "@/utils/errors/index.js";
 import { withResponseLogging, logError } from "@/middleware/logger.js";
 
 /**
@@ -70,6 +75,26 @@ export async function createUser(
     throw new ValidationError("Missing required field: company_id");
   }
 
+  // Check for duplicate email
+  const existingByEmail = await queries.getUserByEmail(env.DB, data.email);
+  if (existingByEmail) {
+    throw new ConflictError("User", "email", data.email);
+  }
+
+  // Verify company exists
+  const company = await queries.getCompany(env.DB, data.company_id);
+  if (!company) {
+    throw new NotFoundError("Company", data.company_id);
+  }
+
+  // Verify department exists if provided
+  if (data.department_id) {
+    const department = await queries.getDepartment(env.DB, data.department_id);
+    if (!department) {
+      throw new NotFoundError("Department", data.department_id);
+    }
+  }
+
   const user = await queries.createUser(env.DB, data);
 
   return withResponseLogging(
@@ -120,6 +145,20 @@ export async function deleteUser(
   context: RequestContext,
   id: string
 ): Promise<Response> {
+  // Check if user exists
+  const user = await queries.getUser(env.DB, id);
+  if (!user) {
+    throw new NotFoundError("User", id);
+  }
+
+  // Check if user has API keys
+  const apiKeys = await queries.listApiKeys(env.DB, { user_id: id });
+  if (apiKeys.length > 0) {
+    throw new ValidationError("Cannot delete user with existing API keys", {
+      api_key_count: String(apiKeys.length),
+    });
+  }
+
   await queries.deleteUser(env.DB, id);
 
   return withResponseLogging(
@@ -177,19 +216,19 @@ export function usersRouteHandler(
       Response.json({ error: "Method not allowed" }, { status: 405 })
     );
   } catch (error) {
+    if (error instanceof ApiError) {
+      logError(context, error);
+      return Promise.resolve(
+        Response.json({ error: error.message }, { status: error.statusCode })
+      );
+    }
     if (error instanceof Error) {
       logError(context, error);
     }
-    const status =
-      error instanceof NotFoundError
-        ? 404
-        : error instanceof ValidationError
-        ? 400
-        : 500;
     return Promise.resolve(
       Response.json(
         { error: error instanceof Error ? error.message : "Unknown error" },
-        { status }
+        { status: 500 }
       )
     );
   }

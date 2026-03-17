@@ -77,21 +77,21 @@ VALUES (
 -- Note: These are example hashes. In production, generate real hashes
 -- using the KeyService. The prefix is what users see.
 
--- Admin API key (unlimited)
--- Note: This is a placeholder hash. Generate real keys via API or using the KeyService.
--- For testing, you can use any unique string as the hash.
+-- Admin API key (unlimited) - Fixed local development key
+-- Key: sk-admin_dev_fixed_key_local_2024
+-- Hash: SHA-256 of the key
 INSERT INTO api_keys (
   id, key_hash, key_prefix, user_id, company_id, department_id,
   name, quota_daily, quota_used, quota_bonus, is_unlimited, is_active,
   created_at, updated_at
 ) VALUES (
   'ak_admin_key',
-  '$2a$10$admin_placeholder_hash_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',  -- Placeholder - replace with real hash
-  'sk_admin_',
+  'eb39b17d861f6e3e7a2d4c2417a6ae0154c67dbdda929ead5d5e8e1d1b96f3b6',
+  'sk-admin_...',
   'u_admin',
   'co_demo_company',
   'dept_engineering',
-  'Admin Key',
+  'Local Admin Key',
   0,
   0,
   0,
@@ -145,11 +145,14 @@ VALUES (
 -- ============================================
 
 -- Claude 4 Opus
-INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_4_opus',
   'claude-4-opus-20250114',
   'Claude 4 Opus',
+  'p_anthropic',
+  15.0,   -- $15 per million input tokens
+  75.0,   -- $75 per million output tokens
   200000,
   8192,
   TRUE,
@@ -158,11 +161,14 @@ VALUES (
 );
 
 -- Claude 4 Sonnet
-INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_4_sonnet',
   'claude-4-sonnet-20250114',
   'Claude 4 Sonnet',
+  'p_anthropic',
+  3.0,    -- $3 per million input tokens
+  15.0,   -- $15 per million output tokens
   200000,
   8192,
   TRUE,
@@ -171,11 +177,14 @@ VALUES (
 );
 
 -- Claude 3.5 Sonnet
-INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_3_5_sonnet',
   'claude-3-5-sonnet-20241022',
   'Claude 3.5 Sonnet',
+  'p_anthropic',
+  3.0,    -- $3 per million input tokens
+  15.0,   -- $15 per million output tokens
   200000,
   8192,
   TRUE,
@@ -184,71 +193,18 @@ VALUES (
 );
 
 -- Claude 3 Haiku
-INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
+INSERT INTO models (id, model_id, display_name, provider_id, input_price, output_price, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
   'm_claude_3_haiku',
   'claude-3-haiku-20240307',
   'Claude 3 Haiku',
+  'p_anthropic',
+  0.25,   -- $0.25 per million input tokens
+  1.25,   -- $1.25 per million output tokens
   200000,
   4096,
   TRUE,
   strftime('%s', 'now') * 1000,
-  strftime('%s', 'now') * 1000
-);
-
--- ============================================
--- Model-Providers (Pricing)
--- ============================================
-
--- Claude 4 Opus pricing
-INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, priority, is_active, created_at)
-VALUES (
-  'mp_claude_4_opus_anthropic',
-  'm_claude_4_opus',
-  'p_anthropic',
-  15.0,   -- $15 per million input tokens
-  75.0,   -- $75 per million output tokens
-  1,
-  TRUE,
-  strftime('%s', 'now') * 1000
-);
-
--- Claude 4 Sonnet pricing
-INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, priority, is_active, created_at)
-VALUES (
-  'mp_claude_4_sonnet_anthropic',
-  'm_claude_4_sonnet',
-  'p_anthropic',
-  3.0,    -- $3 per million input tokens
-  15.0,   -- $15 per million output tokens
-  1,
-  TRUE,
-  strftime('%s', 'now') * 1000
-);
-
--- Claude 3.5 Sonnet pricing
-INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, priority, is_active, created_at)
-VALUES (
-  'mp_claude_3_5_sonnet_anthropic',
-  'm_claude_3_5_sonnet',
-  'p_anthropic',
-  3.0,    -- $3 per million input tokens
-  15.0,   -- $15 per million output tokens
-  1,
-  TRUE,
-  strftime('%s', 'now') * 1000
-);
-
--- Claude 3 Haiku pricing
-INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, priority, is_active, created_at)
-VALUES (
-  'mp_claude_3_haiku_anthropic',
-  'm_claude_3_haiku',
-  'p_anthropic',
-  0.25,   -- $0.25 per million input tokens
-  1.25,   -- $1.25 per million output tokens
-  1,
-  TRUE,
   strftime('%s', 'now') * 1000
 );
 
@@ -274,6 +230,5 @@ VALUES
 -- - 2 users (Admin, Demo User)
 -- - 2 API keys
 -- - 1 provider (Anthropic)
--- - 4 models (Claude 4 Opus, Sonnet, 3.5 Sonnet, 3 Haiku)
--- - 4 model-provider mappings with pricing
+-- - 4 models (Claude 4 Opus, Sonnet, 3.5 Sonnet, 3 Haiku) with pricing
 -- - 4 department-model permissions

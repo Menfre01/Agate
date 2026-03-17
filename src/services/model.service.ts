@@ -18,7 +18,7 @@ import type {
 } from "@/types/index.js";
 import * as queries from "@/db/queries.js";
 import { generateId } from "@/utils/id-generator.js";
-import { NotFoundError, ValidationError } from "@/utils/errors/index.js";
+import { NotFoundError, ConflictError } from "@/utils/errors/index.js";
 
 /**
  * Model Service class.
@@ -100,9 +100,7 @@ export class ModelService {
     // Check if model_id already exists
     const existing = await queries.getModelByModelId(this.db, dto.model_id);
     if (existing) {
-      throw new ValidationError("Model ID already exists", {
-        model_id: dto.model_id,
-      });
+      throw new ConflictError("Model", "model_id", dto.model_id);
     }
 
     // Verify provider exists
@@ -338,7 +336,7 @@ export class ModelService {
       output_price: model.output_price,
       context_window: model.context_window,
       max_tokens: model.max_tokens,
-      is_active: model.is_active,
+      is_active: Boolean(model.is_active),
       created_at: model.created_at,
       updated_at: model.updated_at,
     };

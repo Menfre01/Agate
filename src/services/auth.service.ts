@@ -248,7 +248,7 @@ export class AuthService {
    * @returns Generated API key string
    */
   generateApiKey(): string {
-    return `sk_${Date.now()}_${crypto.randomUUID().replace(/-/g, "")}`;
+    return `sk-${Date.now()}_${crypto.randomUUID().replace(/-/g, "")}`;
   }
 
   /**

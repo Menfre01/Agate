@@ -12,7 +12,12 @@ import type {
 } from "@/types/index.js";
 import type { CreateCompanyDto, UpdateCompanyDto } from "@/db/queries.js";
 import * as queries from "@/db/queries.js";
-import { ValidationError, NotFoundError } from "@/utils/errors/index.js";
+import {
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+  ApiError,
+} from "@/utils/errors/index.js";
 import { withResponseLogging, logError } from "@/middleware/logger.js";
 
 /**
@@ -51,6 +56,13 @@ export async function createCompany(
 
   if (!data.name) {
     throw new ValidationError("Missing required field: name");
+  }
+
+  // Check for duplicate company name
+  const companies = await queries.listCompanies(env.DB);
+  const existing = companies.find((c) => c.name === data.name);
+  if (existing) {
+    throw new ConflictError("Company", "name", data.name);
   }
 
   const company = await queries.createCompany(env.DB, data);
@@ -160,19 +172,19 @@ export function companiesRouteHandler(
       Response.json({ error: "Method not allowed" }, { status: 405 })
     );
   } catch (error) {
+    if (error instanceof ApiError) {
+      logError(context, error);
+      return Promise.resolve(
+        Response.json({ error: error.message }, { status: error.statusCode })
+      );
+    }
     if (error instanceof Error) {
       logError(context, error);
     }
-    const status =
-      error instanceof NotFoundError
-        ? 404
-        : error instanceof ValidationError
-        ? 400
-        : 500;
     return Promise.resolve(
       Response.json(
         { error: error instanceof Error ? error.message : "Unknown error" },
-        { status }
+        { status: 500 }
       )
     );
   }

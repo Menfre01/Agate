@@ -69,7 +69,7 @@ KV_PREVIEW_ID=""
 # ============================================
 # Step 1: Create D1 Database (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[1/5] Setting up D1 Database...${NC}"
+echo -e "\n${YELLOW}[1/6] Setting up D1 Database...${NC}"
 
 # Check if database already exists
 EXISTING_DB=$(wrangler d1 list 2>/dev/null | grep -o "$DB_NAME" || true)
@@ -94,7 +94,7 @@ echo -e "${BLUE}Database ID: ${DB_ID}${NC}"
 # ============================================
 # Step 2: Create KV Namespace (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[2/5] Setting up KV Cache...${NC}"
+echo -e "\n${YELLOW}[2/6] Setting up KV Cache...${NC}"
 
 KV_NAME="agate-cache"
 EXISTING_KV=$(wrangler kv:namespace list 2>/dev/null | grep -o "$KV_NAME" || true)
@@ -119,7 +119,7 @@ echo -e "${BLUE}KV ID: ${KV_ID}${NC}"
 # ============================================
 # Step 3: Create production config
 # ============================================
-echo -e "\n${YELLOW}[3/5] Creating production config...${NC}"
+echo -e "\n${YELLOW}[3/6] Creating production config...${NC}"
 
 cat > wrangler.prod.jsonc <<EOF
 {
@@ -187,7 +187,7 @@ echo -e "${GREEN}Config created${NC}"
 # ============================================
 # Step 4: Deploy database schema
 # ============================================
-echo -e "\n${YELLOW}[4/5] Deploying database schema...${NC}"
+echo -e "\n${YELLOW}[4/6] Deploying database schema...${NC}"
 
 wrangler d1 execute "$DB_NAME" --file=./src/db/schema.sql --config wrangler.prod.jsonc
 echo -e "${GREEN}Database schema deployed${NC}"
@@ -199,11 +199,24 @@ wrangler d1 execute "$DB_NAME" --file=./scripts/seed-data.sql --config wrangler.
 # ============================================
 # Step 5: Deploy Worker
 # ============================================
-echo -e "\n${YELLOW}[5/5] Deploying Worker...${NC}"
+echo -e "\n${YELLOW}[5/6] Deploying Worker...${NC}"
 
 wrangler deploy --config wrangler.prod.jsonc
 
 echo -e "${GREEN}Worker deployed${NC}"
+
+# ============================================
+# Step 6: Initialize Super Admin API Key
+# ============================================
+echo -e "\n${YELLOW}[6/6] Initializing Super Admin API Key...${NC}"
+
+# Run the init script and capture output
+INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config wrangler.prod.jsonc 2>&1)
+
+echo "$INIT_OUTPUT"
+
+# Extract the API key from output
+ADMIN_KEY=$(echo "$INIT_OUTPUT" | grep -o 'sk_[0-9]*_[a-f0-9]*' | head -1)
 
 # ============================================
 # Summary
@@ -224,8 +237,11 @@ echo -e "${GREEN}$WORKER_URL${NC}"
 
 echo -e "\n${YELLOW}Next steps:${NC}"
 echo -e "1. Test health check: ${GREEN}curl $WORKER_URL/health${NC}"
-echo -e "2. Create admin API key (see scripts/init-dev-keys.sh)"
+echo -e "2. Test admin access: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $WORKER_URL/admin/keys${NC}"
 echo -e "3. Configure your custom domain DNS (if applicable)"
+echo -e "\n${RED}IMPORTANT: Save your admin API key!${NC}"
+echo -e "${GREEN}$ADMIN_KEY${NC}"
+echo -e "${RED}It is also saved in .admin-api-key${NC}"
 
 # Save deployment info
 cat > .deployment-info <<EOF
@@ -235,6 +251,7 @@ Account ID: $ACCOUNT_ID
 Database ID: $DB_ID
 KV ID: $KV_ID
 Worker URL: $WORKER_URL
+Admin API Key: $ADMIN_KEY
 EOF
 
 echo -e "\n${BLUE}Deployment info saved to .deployment-info${NC}"

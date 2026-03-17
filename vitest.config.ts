@@ -11,6 +11,8 @@ export default defineConfig({
       "@/middleware": path.resolve(__dirname, "./src/middleware"),
       "@/api": path.resolve(__dirname, "./src/api"),
       "@/db": path.resolve(__dirname, "./src/db"),
+      "@test/helpers": path.resolve(__dirname, "./tests/functional/helpers"),
+      "@test/integration": path.resolve(__dirname, "./tests/integration"),
     },
   },
   test: {

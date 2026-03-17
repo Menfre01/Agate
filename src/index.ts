@@ -16,6 +16,7 @@ import { messagesRouteHandler } from "@/api/proxy/anthropic.js";
 import { modelsRouteHandler } from "@/api/proxy/models.js";
 
 // Admin API handlers
+import { authRouteHandler } from "@/api/admin/auth.js";
 import { keysRouteHandler } from "@/api/admin/keys.js";
 import { providersRouteHandler } from "@/api/admin/providers.js";
 import { modelsRouteHandler as adminModelsRouteHandler } from "@/api/admin/models.js";
@@ -98,11 +99,13 @@ export default {
     // Create middleware
     const loggerMiddleware = createLoggerMiddleware(env);
     const authMiddleware = createAuthMiddleware(env);
-    const rateLimitMiddleware = createRateLimitMiddleware({ limit: 100, window: 60 });
+    // Use higher rate limit for local development/testing
+    const url = new URL(request.url);
+    const isDev = env.ENVIRONMENT === "development" || url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const rateLimit = isDev ? { limit: 10000, window: 60 } : { limit: 100, window: 60 };
+    const rateLimitMiddleware = createRateLimitMiddleware(rateLimit);
 
     try {
-      const url = new URL(request.url);
-
       // Health check endpoint (no middleware)
       if (url.pathname === "/health") {
         return Response.json({
@@ -125,6 +128,9 @@ export default {
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       // Admin API routes
+      response = await authRouteHandler(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
       response = await companiesRouteHandler(request, env, context);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
@@ -195,6 +201,10 @@ export default {
             break;
           case "QuotaExceededError":
             status = 402;
+            message = error.message;
+            break;
+          case "ConflictError":
+            status = 409;
             message = error.message;
             break;
         }

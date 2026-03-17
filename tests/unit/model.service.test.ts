@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ModelService } from "@/services/model.service.js";
 import type { Model, Env } from "@/types/index.js";
-import { NotFoundError, ValidationError } from "@/utils/errors/index.js";
+import { NotFoundError, ValidationError, ConflictError } from "@/utils/errors/index.js";
 
 // Mock queries module
 vi.mock("@/db/queries.js", () => ({
@@ -141,14 +141,14 @@ describe("ModelService", () => {
           display_name: "Duplicate",
           provider_id: "provider-123",
         })
-      ).rejects.toThrow(ValidationError);
+      ).rejects.toThrow(ConflictError);
       await expect(
         modelService.createModel({
           model_id: "claude-3-sonnet",
           display_name: "Duplicate",
           provider_id: "provider-123",
         })
-      ).rejects.toThrow("Model ID already exists");
+      ).rejects.toThrow("Model with this model_id already exists");
     });
 
     it("should throw NotFoundError when provider does not exist", async () => {

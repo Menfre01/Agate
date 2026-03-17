@@ -231,7 +231,7 @@ export class ProviderService {
     return credentials.map((c) => ({
       id: c.id,
       credential_name: c.credential_name,
-      is_active: c.is_active,
+      is_active: Boolean(c.is_active),
       priority: c.priority,
       weight: c.weight,
       health_status: c.health_status,
@@ -258,7 +258,15 @@ export class ProviderService {
     }
 
     // Encrypt the API key
-    const encryptedKey = await this.encryptApiKey(dto.api_key);
+    let encryptedKey: string;
+    try {
+      encryptedKey = await this.encryptApiKey(dto.api_key);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new ValidationError(`Failed to encrypt API key: ${errorMessage}`, {
+        original_error: errorMessage,
+      });
+    }
 
     const now = Date.now();
     const credential: ProviderCredential = {
@@ -280,7 +288,7 @@ export class ProviderService {
     return {
       id: credential.id,
       credential_name: credential.credential_name,
-      is_active: credential.is_active,
+      is_active: Boolean(credential.is_active),
       priority: credential.priority,
       weight: credential.weight,
       health_status: credential.health_status,
@@ -382,13 +390,16 @@ export class ProviderService {
    */
   private async encryptApiKey(apiKey: string): Promise<string> {
     const encoder = new TextEncoder();
-    const keyBytes = encoder.encode(this.encryptionKey);
-    const keyData = encoder.encode(apiKey);
+    // Derive a 256-bit key from the encryption key using SHA-256
+    const keyData = encoder.encode(this.encryptionKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", keyData);
+    const keyBytes = new Uint8Array(hashBuffer);
+    const dataBytes = encoder.encode(apiKey);
 
     const key = await crypto.subtle.importKey(
       "raw",
       keyBytes,
-      { name: "AES-GCM" },
+      { name: "AES-GCM", length: 256 },
       false,
       ["encrypt"]
     );
@@ -397,7 +408,7 @@ export class ProviderService {
     const encrypted = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
       key,
-      keyData
+      dataBytes
     );
 
     // Combine IV and encrypted data
@@ -426,12 +437,15 @@ export class ProviderService {
     const encryptedData = combined.slice(12);
 
     const encoder = new TextEncoder();
-    const keyBytes = encoder.encode(this.encryptionKey);
+    // Derive the same 256-bit key from the encryption key using SHA-256
+    const keyData = encoder.encode(this.encryptionKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", keyData);
+    const keyBytes = new Uint8Array(hashBuffer);
 
     const key = await crypto.subtle.importKey(
       "raw",
       keyBytes,
-      { name: "AES-GCM" },
+      { name: "AES-GCM", length: 256 },
       false,
       ["decrypt"]
     );
@@ -499,7 +513,7 @@ export class ProviderService {
       display_name: provider.display_name,
       base_url: provider.base_url,
       api_version: provider.api_version,
-      is_active: provider.is_active,
+      is_active: Boolean(provider.is_active),
       credential_count: credentialCount,
       created_at: provider.created_at,
       updated_at: provider.updated_at,
