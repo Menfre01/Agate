@@ -81,5 +81,46 @@ async function seedTestData(db: D1Database): Promise<void> {
  * Cleans up test data after tests.
  */
 export async function cleanupIntegrationTest(env: Env): Promise<void> {
-  // Cleanup would go here
+  // Tables to clean in order (respecting foreign key constraints)
+  const tables = [
+    "usage_logs",
+    "quota_changes",
+    "department_models",
+    "api_keys",
+    "models",
+    "provider_credentials",
+    "providers",
+    "users",
+    "departments",
+    "companies",
+  ];
+
+  // Delete test data (identified by patterns)
+  for (const table of tables) {
+    try {
+      // Delete rows with test-like patterns
+      await env.DB
+        .prepare(`
+          DELETE FROM ${table}
+          WHERE id REGEXP '.*[0-9]{13,}$'
+             OR name LIKE 'Test %'
+             OR name LIKE 'test-%'
+        `)
+        .run();
+
+      // For users table, also clean by email pattern
+      if (table === "users") {
+        await env.DB
+          .prepare(`
+            DELETE FROM ${table}
+            WHERE email LIKE '%@example.com'
+               OR email LIKE 'test-%@%'
+               OR email LIKE '%-test-%'
+          `)
+          .run();
+      }
+    } catch (error) {
+      // Ignore errors (table might not exist in test environment)
+    }
+  }
 }

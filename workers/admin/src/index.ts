@@ -23,6 +23,7 @@ import { companiesRouteHandler } from "./api/admin/companies.js";
 import { departmentsRouteHandler } from "./api/admin/departments.js";
 import { usersRouteHandler } from "./api/admin/users.js";
 import { healthCheckRouteHandlerWithErrorHandling } from "./api/admin/health-check.js";
+import { testCleanupRouteHandlerWithErrorHandling } from "./api/admin/test-cleanup.js";
 
 /**
  * Creates request context from incoming request.
@@ -135,6 +136,10 @@ export default {
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       response = await healthCheckRouteHandlerWithErrorHandling(request, env, context);
+      if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
+
+      // Test cleanup endpoint (only in test/dev, before 404)
+      response = await testCleanupRouteHandlerWithErrorHandling(request, env, context);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       // 404 for unimplemented routes

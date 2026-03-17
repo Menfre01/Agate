@@ -415,4 +415,16 @@ export class ApiClient {
   }): Promise<ApiResponse> {
     return this.post("/v1/messages", body, apiKey);
   }
+
+  // ========================================
+  // Test Cleanup API
+  // ========================================
+
+  /**
+   * 清理测试数据
+   * 仅在测试/开发环境可用
+   */
+  async cleanupTestData(): Promise<ApiResponse> {
+    return this.post("/admin/test/cleanup", {});
+  }
 }

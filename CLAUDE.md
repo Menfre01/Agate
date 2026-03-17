@@ -21,16 +21,35 @@
 
 所有测试功能**必须**包含数据清理机制，确保测试不产生数据污染。
 
-**验收标准**：
-- 每个测试用例执行后必须清理自身创建的数据
-- 使用 `afterEach`/`afterAll` 钩子或 `teardown` 函数进行清理
-- 涉及数据库操作的测试必须使用事务或回滚机制
-- 涉及外部 API 调用的测试必须使用 mock 或 stub
+**运行测试要求**：
+- **必须**设置 `TEST_CLEANUP=true` 环境变量运行测试
+- 测试完成后自动调用 `/admin/test/cleanup` 清理端点
 - 测试失败时仍应执行清理逻辑
 
+**正确方式**：
+```bash
+# 功能测试（必须启用清理）
+TEST_CLEANUP=true pnpm test:functional
+
+# 所有测试（必须启用清理）
+TEST_CLEANUP=true pnpm test
+
+# 单个测试文件（必须启用清理）
+TEST_CLEANUP=true pnpm test tests/functional/auth/auth-flows.test.ts
+```
+
+**禁止操作**：
+- ❌ 直接运行 `pnpm test`（会留下脏数据）
+- ❌ 运行 `pnpm test:functional`（会留下脏数据）
+
+**验收标准**：
+- 每个测试文件执行后必须清理自身创建的数据
+- 测试数据通过 `/admin/test/cleanup` API 统一清理
+- 涉及数据库操作的测试使用专门的清理端点
+
 **例外情况**：
-- 只读测试（仅查询，不创建/修改数据）
-- 使用内存数据库且进程重启后自动清空的场景
+- 单元测试（使用 mock，不访问真实数据库）
+- 集成测试（仅验证函数导出，无数据库操作）
 
 ---
 
@@ -58,6 +77,36 @@
 Worker 编译后的 WASM bundle 不得超过 **10 MB**。
 
 **原因**：Cloudflare Workers Paid 计划的硬限制为 10 MB（Free 计划仅 3 MB）。
+
+### 开发服务器管理
+
+#### 使用统一脚本启动/停止服务
+
+启动和停止开发服务器**必须**使用项目提供的脚本。
+
+**正确方式**：
+```bash
+pnpm dev:start    # 启动所有服务（Proxy Worker + Admin Worker + Pages）
+pnpm dev:stop     # 停止所有服务
+pnpm dev:status   # 查看服务状态
+pnpm dev:logs     # 查看日志
+```
+
+**禁止操作**：
+- ❌ 直接运行 `wrangler dev`（会导致后台进程混乱）
+- ❌ 在 pages 目录下直接运行 `pnpm dev`
+- ❌ 手动使用 `nohup` 或 `&` 后台启动进程
+
+**原因**：
+- 脚本集中管理所有服务进程，自动保存 PID
+- 统一日志输出到 `.logs/` 目录
+- 一键停止所有服务，自动清理残留进程
+- 避免端口占用和进程泄漏
+
+**服务端口**：
+- Proxy Worker: `http://localhost:8787`
+- Admin Worker: `http://localhost:8788`
+- Pages 前端: `http://localhost:5173`
 
 ### Git 工作流
 1. 完成功能开发
