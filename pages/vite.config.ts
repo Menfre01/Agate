@@ -52,4 +52,25 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./tests/setup.ts'],
+    include: ['tests/**/*.{test,spec}.{js,ts}'],
+    exclude: ['node_modules', 'dist', 'tests/e2e/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'tests/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        'src/auto-imports.d.ts',
+        'src/components.d.ts',
+      ],
+    },
+    testTimeout: 10000,
+    hookTimeout: 30000,
+  },
 })
