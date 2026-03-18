@@ -18,6 +18,7 @@ PIDS_DIR="$PROJECT_ROOT/.pids"
 # PID 文件路径
 PROXY_PID_FILE="$PIDS_DIR/proxy.pid"
 ADMIN_PID_FILE="$PIDS_DIR/admin.pid"
+HEALTH_PID_FILE="$PIDS_DIR/health.pid"
 PAGES_PID_FILE="$PIDS_DIR/pages.pid"
 
 echo -e "${BLUE}========================================${NC}"
@@ -72,6 +73,7 @@ stop_service() {
 
 # 停止所有服务
 stop_service "Pages 开发服务器" "$PAGES_PID_FILE"
+stop_service "Health Worker" "$HEALTH_PID_FILE"
 stop_service "Admin Worker" "$ADMIN_PID_FILE"
 stop_service "Proxy Worker" "$PROXY_PID_FILE"
 
@@ -92,6 +94,7 @@ cleanup_port() {
 }
 
 cleanup_port 5173 "Pages"
+cleanup_port 8789 "Health Worker"
 cleanup_port 8788 "Admin Worker"
 cleanup_port 8787 "Proxy Worker"
 

@@ -17,6 +17,7 @@ LOGS_DIR="$PROJECT_ROOT/.logs"
 # 日志文件路径
 PROXY_LOG_FILE="$LOGS_DIR/proxy.log"
 ADMIN_LOG_FILE="$LOGS_DIR/admin.log"
+HEALTH_LOG_FILE="$LOGS_DIR/health.log"
 PAGES_LOG_FILE="$LOGS_DIR/pages.log"
 
 # 显示帮助
@@ -30,6 +31,7 @@ show_help() {
     echo "服务:"
     echo "  proxy    - Proxy Worker 日志"
     echo "  admin    - Admin Worker 日志"
+    echo "  health   - Health Worker 日志"
     echo "  pages    - Pages 开发服务器日志"
     echo "  all      - 所有日志 (默认)"
     echo ""
@@ -39,6 +41,7 @@ show_help() {
     echo "示例:"
     echo "  pnpm dev:logs           # 查看所有日志 (最后 50 行)"
     echo "  pnpm dev:logs admin     # 查看 Admin Worker 日志"
+    echo "  pnpm dev:logs health    # 查看 Health Worker 日志"
     echo "  pnpm dev:logs proxy 100 # 查看 Proxy Worker 日志 (最后 100 行)"
     echo ""
 }
@@ -75,12 +78,16 @@ case "$SERVICE" in
     admin)
         show_logs "Admin Worker" "$ADMIN_LOG_FILE" "$LINES"
         ;;
+    health)
+        show_logs "Health Worker" "$HEALTH_LOG_FILE" "$LINES"
+        ;;
     pages)
         show_logs "Pages 开发服务器" "$PAGES_LOG_FILE" "$LINES"
         ;;
     all)
         show_logs "Proxy Worker" "$PROXY_LOG_FILE" "$LINES"
         show_logs "Admin Worker" "$ADMIN_LOG_FILE" "$LINES"
+        show_logs "Health Worker" "$HEALTH_LOG_FILE" "$LINES"
         show_logs "Pages 开发服务器" "$PAGES_LOG_FILE" "$LINES"
         ;;
     help|--help|-h)

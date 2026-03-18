@@ -23,16 +23,19 @@ mkdir -p "$LOGS_DIR"
 # PID 文件路径
 PROXY_PID_FILE="$PIDS_DIR/proxy.pid"
 ADMIN_PID_FILE="$PIDS_DIR/admin.pid"
+HEALTH_PID_FILE="$PIDS_DIR/health.pid"
 PAGES_PID_FILE="$PIDS_DIR/pages.pid"
 
 # 日志文件路径
 PROXY_LOG_FILE="$LOGS_DIR/proxy.log"
 ADMIN_LOG_FILE="$LOGS_DIR/admin.log"
+HEALTH_LOG_FILE="$LOGS_DIR/health.log"
 PAGES_LOG_FILE="$LOGS_DIR/pages.log"
 
 # 端口配置
 PROXY_PORT=8787
 ADMIN_PORT=8788
+HEALTH_PORT=8789
 PAGES_PORT=5173
 
 echo -e "${BLUE}========================================${NC}"
@@ -119,6 +122,15 @@ if ! check_running "Admin Worker" "$ADMIN_PID_FILE" "$ADMIN_PORT"; then
     fi
 fi
 
+# Health Worker
+if ! check_running "Health Worker" "$HEALTH_PID_FILE" "$HEALTH_PORT"; then
+    if ! start_service "Health Worker" \
+        "cd workers/health && npx wrangler dev --persist-to=.wrangler/state --port=$HEALTH_PORT" \
+        "$HEALTH_PID_FILE" "$HEALTH_LOG_FILE" "$HEALTH_PORT"; then
+        all_started=false
+    fi
+fi
+
 # Pages 开发服务器
 if ! check_running "Pages 开发服务器" "$PAGES_PID_FILE" "$PAGES_PORT"; then
     if ! start_service "Pages 开发服务器" \
@@ -157,6 +169,7 @@ show_service_status() {
 
 show_service_status "Proxy Worker" "http://localhost:$PROXY_PORT" "$PROXY_PID_FILE"
 show_service_status "Admin Worker" "http://localhost:$ADMIN_PORT" "$ADMIN_PID_FILE"
+show_service_status "Health Worker" "http://localhost:$HEALTH_PORT" "$HEALTH_PID_FILE"
 show_service_status "Pages 开发服务器" "http://localhost:$PAGES_PORT" "$PAGES_PID_FILE"
 
 echo ""

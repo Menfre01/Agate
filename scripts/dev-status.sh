@@ -18,11 +18,13 @@ LOGS_DIR="$PROJECT_ROOT/.logs"
 # PID 文件路径
 PROXY_PID_FILE="$PIDS_DIR/proxy.pid"
 ADMIN_PID_FILE="$PIDS_DIR/admin.pid"
+HEALTH_PID_FILE="$PIDS_DIR/health.pid"
 PAGES_PID_FILE="$PIDS_DIR/pages.pid"
 
 # 端口配置
 PROXY_PORT=8787
 ADMIN_PORT=8788
+HEALTH_PORT=8789
 PAGES_PORT=5173
 
 echo -e "${BLUE}========================================${NC}"
@@ -87,6 +89,7 @@ check_service() {
 # 检查所有服务
 check_service "Proxy Worker" "http://localhost:$PROXY_PORT" "$PROXY_PID_FILE" "$LOGS_DIR/proxy.log"
 check_service "Admin Worker" "http://localhost:$ADMIN_PORT" "$ADMIN_PID_FILE" "$LOGS_DIR/admin.log"
+check_service "Health Worker" "http://localhost:$HEALTH_PORT" "$HEALTH_PID_FILE" "$LOGS_DIR/health.log"
 check_service "Pages 开发服务器" "http://localhost:$PAGES_PORT" "$PAGES_PID_FILE" "$LOGS_DIR/pages.log"
 
 # 显示快捷命令
