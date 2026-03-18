@@ -56,6 +56,24 @@
         </n-space>
       </template>
     </n-modal>
+
+    <!-- 奖励配额弹窗 -->
+    <n-modal v-model:show="showBonusModal" preset="dialog" title="添加奖励配额">
+      <n-form ref="bonusFormRef" :model="bonusData" :rules="bonusRules" label-placement="left" :label-width="100">
+        <n-form-item label="配额数量" path="amount">
+          <n-input-number v-model:value="bonusData.amount" :min="1" style="width: 100%;" placeholder="请输入配额数量" />
+        </n-form-item>
+        <n-form-item label="有效期(天)" path="expires_in_days">
+          <n-input-number v-model:value="bonusData.expires_in_days" :min="1" :max="365" style="width: 100%;" placeholder="默认30天" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-space>
+          <n-button @click="showBonusModal = false">取消</n-button>
+          <n-button type="primary" :loading="bonusSubmitting" @click="handleBonusSubmit">确定</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -79,8 +97,11 @@ import {
   type FormInst,
   type FormRules,
 } from 'naive-ui'
-import { getKeys, createKey } from '@/shared/api/admin'
+import { getKeys, createKey, enableKey, disableKey, addBonusQuota } from '@/shared/api/admin'
 import { getUsers } from '@/shared/api/admin'
+import { useMessage } from 'naive-ui'
+
+const message = useMessage()
 
 const loading = ref(false)
 const keys = ref<any[]>([])
@@ -135,10 +156,14 @@ import { h } from 'vue'
 
 const showCreateModal = ref(false)
 const showKeyResult = ref(false)
+const showBonusModal = ref(false)
 const submitting = ref(false)
+const bonusSubmitting = ref(false)
 const newKey = ref('')
 const formRef = ref<FormInst | null>(null)
+const bonusFormRef = ref<FormInst | null>(null)
 const userOptions = ref<{ label: string; value: string }[]>([])
+const currentKeyId = ref('')
 
 const formData = reactive({
   user_id: '',
@@ -146,9 +171,19 @@ const formData = reactive({
   quota_daily: 100000,
 })
 
+const bonusData = reactive({
+  amount: 100000,
+  expires_in_days: 30,
+})
+
 const rules: FormRules = {
   user_id: { required: true, message: '请选择用户', trigger: 'change', type: 'string' },
   quota_daily: { required: true, message: '请输入每日配额', trigger: 'blur', type: 'number' },
+}
+
+const bonusRules: FormRules = {
+  amount: { required: true, message: '请输入配额数量', trigger: 'blur', type: 'number' },
+  expires_in_days: { required: true, message: '请输入有效期', trigger: 'blur', type: 'number' },
 }
 
 async function loadKeys() {
@@ -198,13 +233,45 @@ function copyKey() {
 }
 
 function handleAddBonus(row: any) {
-  // TODO: 实现添加奖励配额
-  console.log('Add bonus for key:', row.id)
+  currentKeyId.value = row.id
+  bonusData.amount = 100000
+  bonusData.expires_in_days = 30
+  showBonusModal.value = true
+}
+
+async function handleBonusSubmit() {
+  try {
+    await bonusFormRef.value?.validate()
+    bonusSubmitting.value = true
+    // 计算过期时间戳
+    const expiresAt = Date.now() + bonusData.expires_in_days * 86400000
+    await addBonusQuota(currentKeyId.value, {
+      amount: bonusData.amount,
+      expires_at: expiresAt,
+    })
+    message.success('奖励配额添加成功')
+    showBonusModal.value = false
+    await loadKeys()
+  } catch (error: any) {
+    message.error(error.message || '添加奖励配额失败')
+  } finally {
+    bonusSubmitting.value = false
+  }
 }
 
 async function handleDisable(row: any) {
-  // TODO: 实现禁用/启用 Key
-  console.log('Toggle status for key:', row.id)
+  try {
+    if (row.is_active) {
+      await disableKey(row.id)
+      message.success('API Key 已禁用')
+    } else {
+      await enableKey(row.id)
+      message.success('API Key 已启用')
+    }
+    await loadKeys()
+  } catch (error: any) {
+    message.error(error.message || '操作失败')
+  }
 }
 
 function formatDate(timestamp: number): string {

@@ -65,6 +65,28 @@ export async function getUsers(query?: UserListQuery): Promise<UserListResponse>
   return adminApi.get(`/admin/users?${params.toString()}`)
 }
 
+export async function createUser(data: {
+  email: string
+  name?: string
+  company_id: string
+  department_id?: string
+  role?: string
+  quota_daily?: number
+}): Promise<UserResponse> {
+  return adminApi.post('/admin/users', data)
+}
+
+export async function updateUser(
+  id: string,
+  data: { is_active?: boolean; role?: string; quota_daily?: number }
+): Promise<UserResponse> {
+  return adminApi.put(`/admin/users/${id}`, data)
+}
+
+export async function deleteUser(id: string): Promise<{ success: boolean }> {
+  return adminApi.delete(`/admin/users/${id}`)
+}
+
 // =============================================================================
 // Companies API
 // =============================================================================
@@ -92,6 +114,25 @@ export async function getCompanies(query?: CompanyListQuery): Promise<CompanyLis
     })
   }
   return adminApi.get(`/admin/companies?${params.toString()}`)
+}
+
+export async function createCompany(data: {
+  name: string
+  quota_pool?: number
+  quota_daily?: number
+}): Promise<CompanyResponse> {
+  return adminApi.post('/admin/companies', data)
+}
+
+export async function updateCompany(
+  id: string,
+  data: { name?: string; quota_pool?: number; quota_daily?: number }
+): Promise<CompanyResponse> {
+  return adminApi.put(`/admin/companies/${id}`, data)
+}
+
+export async function deleteCompany(id: string): Promise<{ success: boolean }> {
+  return adminApi.delete(`/admin/companies/${id}`)
 }
 
 // =============================================================================
@@ -122,6 +163,26 @@ export async function getDepartments(query?: DepartmentListQuery): Promise<Depar
     })
   }
   return adminApi.get(`/admin/departments?${params.toString()}`)
+}
+
+export async function createDepartment(data: {
+  company_id: string
+  name: string
+  quota_pool?: number
+  quota_daily?: number
+}): Promise<DepartmentResponse> {
+  return adminApi.post('/admin/departments', data)
+}
+
+export async function updateDepartment(
+  id: string,
+  data: { name?: string; quota_pool?: number; quota_daily?: number }
+): Promise<DepartmentResponse> {
+  return adminApi.put(`/admin/departments/${id}`, data)
+}
+
+export async function deleteDepartment(id: string): Promise<{ success: boolean }> {
+  return adminApi.delete(`/admin/departments/${id}`)
 }
 
 // =============================================================================
@@ -167,6 +228,10 @@ export async function updateKey(id: string, data: UpdateApiKeyDto): Promise<ApiK
 
 export async function disableKey(id: string): Promise<{ success: boolean }> {
   return adminApi.post(`/admin/keys/${id}/disable`)
+}
+
+export async function enableKey(id: string): Promise<{ success: boolean }> {
+  return adminApi.post(`/admin/keys/${id}/enable`)
 }
 
 export async function addBonusQuota(id: string, data: AddBonusQuotaDto): Promise<ApiKeyResponse> {

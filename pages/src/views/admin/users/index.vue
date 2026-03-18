@@ -115,9 +115,13 @@ import {
   type FormInst,
   type FormRules,
 } from 'naive-ui'
-import { getUsers } from '@/shared/api/admin'
+import { getUsers, createUser, updateUser, deleteUser } from '@/shared/api/admin'
 import { getCompanies } from '@/shared/api/admin'
 import { getDepartments } from '@/shared/api/admin'
+import { useDialog, useMessage } from 'naive-ui'
+
+const message = useMessage()
+const dialog = useDialog()
 
 const loading = ref(false)
 const users = ref<any[]>([])
@@ -171,7 +175,7 @@ const columns: DataTableColumns<any> = [
     render: (row) =>
       h(NSwitch, {
         value: row.is_active,
-        disabled: row.role === 'admin',
+        disabled: row.role === 'admin' || row.is_system,
         onUpdateValue: () => handleToggleStatus(row),
       }),
   },
@@ -182,6 +186,25 @@ const columns: DataTableColumns<any> = [
     render: (row) => row.api_key_count || 0,
   },
   { title: '创建时间', key: 'created_at', width: 180, render: (row) => formatDate(row.created_at) },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 100,
+    fixed: 'right' as const,
+    render: (row) => {
+      if (row.is_system || row.role === 'admin') return null
+      return h(
+        NPopconfirm,
+        {
+          onPositiveClick: () => handleDelete(row),
+        },
+        {
+          trigger: () => h(NButton, { size: 'small', type: 'error' }, () => '删除'),
+          default: () => '确定删除此用户？',
+        }
+      )
+    },
+  },
 ]
 
 // 创建用户相关
@@ -250,23 +273,53 @@ function handlePageChange(page: number) {
   loadUsers()
 }
 
-function handleToggleStatus(row: any) {
-  // TODO: 实现切换用户状态
-  console.log('Toggle status for user:', row.id)
+async function handleToggleStatus(row: any) {
+  if (row.role === 'admin') return
+  try {
+    await updateUser(row.id, { is_active: !row.is_active })
+    message.success(row.is_active ? '用户已禁用' : '用户已启用')
+    loadUsers()
+  } catch (error: any) {
+    message.error(error.message || '操作失败')
+  }
 }
 
 async function handleCreate() {
   try {
     await formRef.value?.validate()
     submitting.value = true
-    // TODO: 调用创建用户 API
-    console.log('Create user:', formData)
+    await createUser({
+      email: formData.email,
+      name: formData.name,
+      role: formData.role,
+      company_id: formData.company_id,
+      department_id: formData.department_id || undefined,
+      quota_daily: formData.quota_daily,
+    })
+    message.success('用户创建成功')
     showCreateModal.value = false
+    // 重置表单
+    formData.email = ''
+    formData.name = ''
+    formData.role = 'user'
+    formData.company_id = ''
+    formData.department_id = ''
+    formData.quota_daily = 100000
     await loadUsers()
-  } catch (error) {
-    console.error('Failed to create user:', error)
+  } catch (error: any) {
+    message.error(error.message || '创建用户失败')
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleDelete(row: any) {
+  try {
+    await deleteUser(row.id)
+    message.success('用户已删除')
+    await loadUsers()
+  } catch (error: any) {
+    message.error(error.message || '删除失败')
   }
 }
 

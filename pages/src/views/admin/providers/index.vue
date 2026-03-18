@@ -2,7 +2,7 @@
   <div class="providers-page">
     <n-card title="提供商管理">
       <template #header-extra>
-        <n-button type="primary" @click="showCreateModal = true">新建提供商</n-button>
+        <n-button type="primary" @click="openCreateModal">新建提供商</n-button>
       </template>
 
       <n-data-table
@@ -13,11 +13,11 @@
       />
     </n-card>
 
-    <!-- 创建提供商弹窗 -->
-    <n-modal v-model:show="showCreateModal" preset="dialog" title="新建提供商">
+    <!-- 创建/编辑提供商弹窗 -->
+    <n-modal v-model:show="showModal" preset="dialog" :title="isEdit ? '编辑提供商' : '新建提供商'">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" :label-width="100">
         <n-form-item label="标识符" path="name">
-          <n-input v-model:value="formData.name" placeholder="例如: anthropic, openai" />
+          <n-input v-model:value="formData.name" placeholder="例如: anthropic, openai" :disabled="isEdit" />
         </n-form-item>
         <n-form-item label="显示名称" path="display_name">
           <n-input v-model:value="formData.display_name" placeholder="例如: Anthropic Claude" />
@@ -31,8 +31,69 @@
       </n-form>
       <template #action>
         <n-space>
-          <n-button @click="showCreateModal = false">取消</n-button>
-          <n-button type="primary" :loading="submitting" @click="handleCreate">确定</n-button>
+          <n-button @click="closeModal">取消</n-button>
+          <n-button type="primary" :loading="submitting" @click="handleSubmit">确定</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <!-- 凭证管理弹窗 -->
+    <n-modal v-model:show="showCredentialModal" preset="dialog" title="凭证管理">
+      <n-space vertical>
+        <n-button type="primary" @click="openAddCredentialModal">添加凭证</n-button>
+        <n-list>
+          <n-list-item v-for="cred in credentials" :key="cred.id">
+            <template #prefix>
+              <n-tag :type="cred.is_active ? 'success' : 'default'" size="small">
+                {{ cred.is_active ? '启用' : '禁用' }}
+              </n-tag>
+            </template>
+            <n-space vertical>
+              <div><strong>{{ cred.credential_name }}</strong></div>
+              <div class="credential-detail">
+                优先级: {{ cred.priority }} | 权重: {{ cred.weight }}
+                <span v-if="cred.health_status"> | 状态: {{ cred.health_status }}</span>
+              </div>
+            </n-space>
+            <template #suffix>
+              <n-popconfirm @positive-click="() => handleDeleteCredential(cred.id)">
+                <template #trigger>
+                  <n-button size="tiny" type="error">删除</n-button>
+                </template>
+                确定删除此凭证？
+              </n-popconfirm>
+            </template>
+          </n-list-item>
+        </n-list>
+      </n-space>
+      <template #action>
+        <n-button @click="showCredentialModal = false">关闭</n-button>
+      </template>
+    </n-modal>
+
+    <!-- 添加凭证弹窗 -->
+    <n-modal v-model:show="showAddCredentialModal" preset="dialog" title="添加凭证">
+      <n-form ref="credentialFormRef" :model="credentialData" :rules="credentialRules" label-placement="left" :label-width="100">
+        <n-form-item label="凭证名称" path="credential_name">
+          <n-input v-model:value="credentialData.credential_name" placeholder="例如: default" />
+        </n-form-item>
+        <n-form-item label="API Key" path="api_key">
+          <n-input v-model:value="credentialData.api_key" type="password" show-password-on="click" placeholder="sk-..." />
+        </n-form-item>
+        <n-form-item label="API 地址" path="base_url">
+          <n-input v-model:value="credentialData.base_url" placeholder="留空使用提供商默认地址" />
+        </n-form-item>
+        <n-form-item label="优先级" path="priority">
+          <n-input-number v-model:value="credentialData.priority" :min="0" style="width: 100%;" />
+        </n-form-item>
+        <n-form-item label="权重" path="weight">
+          <n-input-number v-model:value="credentialData.weight" :min="0" style="width: 100%;" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-space>
+          <n-button @click="showAddCredentialModal = false">取消</n-button>
+          <n-button type="primary" :loading="credentialSubmitting" @click="handleAddCredential">确定</n-button>
         </n-space>
       </template>
     </n-modal>
@@ -50,17 +111,42 @@ import {
   NFormItem,
   NInput,
   NTag,
+  NSpace,
+  NList,
+  NListItem,
+  NPopconfirm,
+  NInputNumber,
   type DataTableColumns,
   type FormInst,
   type FormRules,
 } from 'naive-ui'
-import { getProviders } from '@/shared/api/admin'
+import {
+  getProviders,
+  createProvider,
+  updateProvider,
+  deleteProvider,
+  getProviderCredentials,
+  addCredential,
+  deleteCredential,
+} from '@/shared/api/admin'
+import { useMessage } from 'naive-ui'
 
+const message = useMessage()
 const loading = ref(false)
 const providers = ref<any[]>([])
-const showCreateModal = ref(false)
+
+const showModal = ref(false)
+const isEdit = ref(false)
+const editId = ref('')
 const submitting = ref(false)
 const formRef = ref<FormInst | null>(null)
+
+const showCredentialModal = ref(false)
+const showAddCredentialModal = ref(false)
+const credentialSubmitting = ref(false)
+const credentialFormRef = ref<FormInst | null>(null)
+const credentials = ref<any[]>([])
+const currentProviderId = ref('')
 
 const formData = reactive({
   name: '',
@@ -69,10 +155,23 @@ const formData = reactive({
   api_version: '',
 })
 
+const credentialData = reactive({
+  credential_name: '',
+  api_key: '',
+  base_url: '',
+  priority: 0,
+  weight: 1,
+})
+
 const rules: FormRules = {
   name: { required: true, message: '请输入标识符', trigger: 'blur' },
   display_name: { required: true, message: '请输入显示名称', trigger: 'blur' },
   base_url: { required: true, message: '请输入 API 地址', trigger: 'blur' },
+}
+
+const credentialRules: FormRules = {
+  credential_name: { required: true, message: '请输入凭证名称', trigger: 'blur' },
+  api_key: { required: true, message: '请输入 API Key', trigger: 'blur' },
 }
 
 const columns: DataTableColumns<any> = [
@@ -89,6 +188,24 @@ const columns: DataTableColumns<any> = [
   },
   { title: '凭证数', key: 'credential_count', width: 80 },
   { title: '创建时间', key: 'created_at', width: 180, render: (row) => formatDate(row.created_at) },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 200,
+    fixed: 'right' as const,
+    render: (row) => h(NSpace, {}, () => [
+      h(NButton, { size: 'small', onClick: () => openCredentialModal(row.id) }, () => '凭证'),
+      h(NButton, { size: 'small', onClick: () => openEditModal(row) }, () => '编辑'),
+      h(
+        NPopconfirm,
+        { onPositiveClick: () => handleDelete(row) },
+        {
+          trigger: () => h(NButton, { size: 'small', type: 'error' }, () => '删除'),
+          default: () => '确定删除此提供商？',
+        }
+      ),
+    ]),
+  },
 ]
 
 async function loadProviders() {
@@ -96,25 +213,135 @@ async function loadProviders() {
   try {
     const result = await getProviders()
     providers.value = result.providers
-  } catch (error) {
-    console.error('Failed to load providers:', error)
+  } catch (error: any) {
+    message.error(error.message || '加载提供商列表失败')
   } finally {
     loading.value = false
   }
 }
 
-async function handleCreate() {
+function openCreateModal() {
+  isEdit.value = false
+  formData.name = ''
+  formData.display_name = ''
+  formData.base_url = ''
+  formData.api_version = ''
+  showModal.value = true
+}
+
+function openEditModal(row: any) {
+  isEdit.value = true
+  editId.value = row.id
+  formData.name = row.name
+  formData.display_name = row.display_name
+  formData.base_url = row.base_url
+  formData.api_version = row.api_version || ''
+  showModal.value = true
+}
+
+function closeModal() {
+  showModal.value = false
+  formData.name = ''
+  formData.display_name = ''
+  formData.base_url = ''
+  formData.api_version = ''
+}
+
+async function handleSubmit() {
   try {
     await formRef.value?.validate()
     submitting.value = true
-    // TODO: 调用创建提供商 API
-    console.log('Create provider:', formData)
-    showCreateModal.value = false
+
+    if (isEdit.value) {
+      await updateProvider(editId.value, {
+        display_name: formData.display_name,
+        base_url: formData.base_url,
+        api_version: formData.api_version || undefined,
+      })
+      message.success('提供商更新成功')
+    } else {
+      await createProvider({
+        name: formData.name,
+        display_name: formData.display_name,
+        base_url: formData.base_url,
+        api_version: formData.api_version || undefined,
+      })
+      message.success('提供商创建成功')
+    }
+
+    closeModal()
     await loadProviders()
-  } catch (error) {
-    console.error('Failed to create provider:', error)
+  } catch (error: any) {
+    message.error(error.message || '操作失败')
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleDelete(row: any) {
+  try {
+    await deleteProvider(row.id)
+    message.success('提供商已删除')
+    await loadProviders()
+  } catch (error: any) {
+    message.error(error.message || '删除失败')
+  }
+}
+
+async function openCredentialModal(providerId: string) {
+  currentProviderId.value = providerId
+  showCredentialModal.value = true
+  await loadCredentials(providerId)
+}
+
+async function loadCredentials(providerId: string) {
+  try {
+    const result = await getProviderCredentials(providerId)
+    credentials.value = result.credentials || []
+  } catch (error: any) {
+    message.error(error.message || '加载凭证失败')
+  }
+}
+
+function openAddCredentialModal() {
+  credentialData.credential_name = ''
+  credentialData.api_key = ''
+  credentialData.base_url = ''
+  credentialData.priority = 0
+  credentialData.weight = 1
+  showAddCredentialModal.value = true
+}
+
+async function handleAddCredential() {
+  try {
+    await credentialFormRef.value?.validate()
+    credentialSubmitting.value = true
+
+    await addCredential(currentProviderId.value, {
+      credential_name: credentialData.credential_name,
+      api_key: credentialData.api_key,
+      base_url: credentialData.base_url || undefined,
+      priority: credentialData.priority,
+      weight: credentialData.weight,
+    })
+
+    message.success('凭证添加成功')
+    showAddCredentialModal.value = false
+    await loadCredentials(currentProviderId.value)
+  } catch (error: any) {
+    message.error(error.message || '添加凭证失败')
+  } finally {
+    credentialSubmitting.value = false
+  }
+}
+
+async function handleDeleteCredential(credentialId: string) {
+  try {
+    await deleteCredential(currentProviderId.value, credentialId)
+    message.success('凭证已删除')
+    await loadCredentials(currentProviderId.value)
+  } catch (error: any) {
+    message.error(error.message || '删除凭证失败')
   }
 }
 
@@ -128,5 +355,10 @@ onMounted(() => loadProviders())
 <style scoped>
 .providers-page {
   max-width: 1400px;
+}
+
+.credential-detail {
+  font-size: 12px;
+  color: #666;
 }
 </style>
