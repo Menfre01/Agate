@@ -4,6 +4,9 @@
 -- Run after schema.sql:
 --   wrangler d1 execute ai-gateway-db --file=./src/db/schema.sql --local
 --   wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql --local
+--
+-- Models updated: 2026-03-18
+-- Based on: https://platform.claude.com/docs/en/about-claude/models/overview
 
 -- ============================================
 -- Organizations
@@ -143,54 +146,45 @@ VALUES (
 -- ============================================
 -- Models
 -- ============================================
+--
+-- Source: https://platform.claude.com/docs/en/about-claude/models/overview
+-- Updated: 2026-03-18
+--
 
--- Claude 4 Opus
+-- Claude Opus 4.6 - The most intelligent model for building agents and coding
 INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
-  'm_claude_4_opus',
-  'claude-4-opus-20250114',
-  'Claude 4 Opus',
-  200000,
-  8192,
+  'm_claude_opus_4_6',
+  'claude-opus-4-6',
+  'Claude Opus 4.6',
+  1000000,
+  128000,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000
 );
 
--- Claude 4 Sonnet
+-- Claude Sonnet 4.6 - The best combination of speed and intelligence
 INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
-  'm_claude_4_sonnet',
-  'claude-4-sonnet-20250114',
-  'Claude 4 Sonnet',
-  200000,
-  8192,
+  'm_claude_sonnet_4_6',
+  'claude-sonnet-4-6',
+  'Claude Sonnet 4.6',
+  1000000,
+  64000,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000
 );
 
--- Claude 3.5 Sonnet
+-- Claude Haiku 4.5 (20251001) - The fastest model with near-frontier intelligence
 INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
 VALUES (
-  'm_claude_3_5_sonnet',
-  'claude-3-5-sonnet-20241022',
-  'Claude 3.5 Sonnet',
+  'm_claude_haiku_4_5_20251001',
+  'claude-haiku-4-5-20251001',
+  'Claude Haiku 4.5',
   200000,
-  8192,
-  TRUE,
-  strftime('%s', 'now') * 1000,
-  strftime('%s', 'now') * 1000
-);
-
--- Claude 3 Haiku
-INSERT INTO models (id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at)
-VALUES (
-  'm_claude_3_haiku',
-  'claude-3-haiku-20240307',
-  'Claude 3 Haiku',
-  200000,
-  4096,
+  64000,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000
@@ -199,54 +193,47 @@ VALUES (
 -- ============================================
 -- Model Providers (n:n relationship)
 -- ============================================
+--
+-- Pricing: https://platform.claude.com/docs/en/about-claude/models/overview
+--
 
--- Anthropic provider for Claude 4 Opus
+-- Anthropic provider for Claude Opus 4.6
+-- Pricing: $5.00/M input, $25.00/M output
 INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
 VALUES (
-  'mp_claude_4_opus_anthropic',
-  'm_claude_4_opus',
+  'mp_claude_opus_4_6_anthropic',
+  'm_claude_opus_4_6',
   'p_anthropic',
-  15.0,   -- $15 per million input tokens
-  75.0,   -- $75 per million output tokens
+  5.0,
+  25.0,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000
 );
 
--- Anthropic provider for Claude 4 Sonnet
+-- Anthropic provider for Claude Sonnet 4.6
+-- Pricing: $3.00/M input, $15.00/M output
 INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
 VALUES (
-  'mp_claude_4_sonnet_anthropic',
-  'm_claude_4_sonnet',
+  'mp_claude_sonnet_4_6_anthropic',
+  'm_claude_sonnet_4_6',
   'p_anthropic',
-  3.0,    -- $3 per million input tokens
-  15.0,   -- $15 per million output tokens
+  3.0,
+  15.0,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000
 );
 
--- Anthropic provider for Claude 3.5 Sonnet
+-- Anthropic provider for Claude Haiku 4.5 (20251001)
+-- Pricing: $1.00/M input, $5.00/M output
 INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
 VALUES (
-  'mp_claude_3_5_sonnet_anthropic',
-  'm_claude_3_5_sonnet',
+  'mp_claude_haiku_4_5_anthropic',
+  'm_claude_haiku_4_5_20251001',
   'p_anthropic',
-  3.0,    -- $3 per million input tokens
-  15.0,   -- $15 per million output tokens
-  TRUE,
-  strftime('%s', 'now') * 1000,
-  strftime('%s', 'now') * 1000
-);
-
--- Anthropic provider for Claude 3 Haiku
-INSERT INTO model_providers (id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at)
-VALUES (
-  'mp_claude_3_haiku_anthropic',
-  'm_claude_3_haiku',
-  'p_anthropic',
-  0.25,   -- $0.25 per million input tokens
-  1.25,   -- $1.25 per million output tokens
+  1.0,
+  5.0,
   TRUE,
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000
@@ -259,10 +246,9 @@ VALUES (
 -- Allow Engineering to use all models
 INSERT INTO department_models (id, department_id, model_id, is_allowed, daily_quota, created_at)
 VALUES
-  ('dm_eng_claude_4_opus', 'dept_engineering', 'm_claude_4_opus', TRUE, 0, strftime('%s', 'now') * 1000),
-  ('dm_eng_claude_4_sonnet', 'dept_engineering', 'm_claude_4_sonnet', TRUE, 0, strftime('%s', 'now') * 1000),
-  ('dm_eng_claude_3_5_sonnet', 'dept_engineering', 'm_claude_3_5_sonnet', TRUE, 0, strftime('%s', 'now') * 1000),
-  ('dm_eng_claude_3_haiku', 'dept_engineering', 'm_claude_3_haiku', TRUE, 0, strftime('%s', 'now') * 1000);
+  ('dm_eng_claude_opus_4_6', 'dept_engineering', 'm_claude_opus_4_6', TRUE, 0, strftime('%s', 'now') * 1000),
+  ('dm_eng_claude_sonnet_4_6', 'dept_engineering', 'm_claude_sonnet_4_6', TRUE, 0, strftime('%s', 'now') * 1000),
+  ('dm_eng_claude_haiku_4_5', 'dept_engineering', 'm_claude_haiku_4_5_20251001', TRUE, 0, strftime('%s', 'now') * 1000);
 
 -- ============================================
 -- Usage Summary
@@ -274,5 +260,5 @@ VALUES
 -- - 2 users (Admin, Demo User)
 -- - 2 API keys
 -- - 1 provider (Anthropic)
--- - 4 models (Claude 4 Opus, Sonnet, 3.5 Sonnet, 3 Haiku) with pricing
--- - 4 department-model permissions
+-- - 3 models (Claude Opus 4.6, Sonnet 4.6, Haiku 4.5) with pricing
+-- - 3 department-model permissions
