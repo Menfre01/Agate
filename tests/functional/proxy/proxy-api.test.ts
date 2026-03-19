@@ -19,6 +19,7 @@ describe("Proxy API", () => {
   let userApiKey: string;
   let testCompanyId: string;
   let testDeptId: string;
+  let testModelId: string;  // 使用实际存在的模型
 
   beforeAll(async () => {
     adminBaseUrl = process.env.TEST_ADMIN_BASE_URL || "http://localhost:8788";
@@ -29,6 +30,15 @@ describe("Proxy API", () => {
     // 使用现有的 demo 数据
     testCompanyId = "co_demo_company";
     testDeptId = "dept_engineering";
+
+    // 获取可用模型列表，使用第一个可用的模型
+    const modelsResponse = await apiClient.proxyGetModels(adminApiKey);
+    if (modelsResponse.status === 200 && modelsResponse.data.data?.length > 0) {
+      testModelId = modelsResponse.data.data[0].id;
+    } else {
+      // 降级使用硬编码的模型 ID
+      testModelId = "claude-sonnet-4-6";
+    }
   });
 
   describe("GET /v1/models", () => {
@@ -51,7 +61,7 @@ describe("Proxy API", () => {
     it("应该处理消息请求", async () => {
       // 注意：实际代理需要真实的服务器环境和上游 API
       const response = await apiClient.proxyCreateMessage(adminApiKey, {
-        model: "claude-3-5-sonnet-20241022",
+        model: testModelId,
         messages: [
           { role: "user", content: "Hello, world!" },
         ],
@@ -119,7 +129,7 @@ describe("Proxy API", () => {
   describe("流式响应", () => {
     it("应该处理流式请求", async () => {
       const response = await apiClient.proxyCreateMessage(adminApiKey, {
-        model: "claude-3-5-sonnet-20241022",
+        model: testModelId,
         messages: [
           { role: "user", content: "Hello" },
         ],
@@ -148,7 +158,7 @@ describe("Proxy API", () => {
           "X-Request-ID": requestId,
         },
         body: JSON.stringify({
-          model: "claude-3-5-sonnet-20241022",
+          model: testModelId,
           messages: [
             { role: "user", content: "Hello" },
           ],

@@ -72,6 +72,7 @@ CREATE TABLE providers (
 CREATE TABLE models (
     id TEXT PRIMARY KEY,
     model_id TEXT NOT NULL UNIQUE,
+    alias TEXT UNIQUE,
     display_name TEXT NOT NULL,
     context_window INTEGER DEFAULT 0,
     max_tokens INTEGER DEFAULT 0,
@@ -217,6 +218,7 @@ CREATE INDEX idx_providers_active ON providers(is_active);
 
 -- Models indexes
 CREATE INDEX idx_models_model_id ON models(model_id);
+CREATE INDEX idx_models_alias ON models(alias);
 CREATE INDEX idx_models_active ON models(is_active);
 
 -- Model-Providers indexes

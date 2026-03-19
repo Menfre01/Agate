@@ -134,6 +134,8 @@ export interface Model {
   id: string;
   /** Model unique identifier (e.g., 'claude-3-sonnet') */
   model_id: string;
+  /** Optional alias for upstream model name mapping */
+  alias: string | null;
   /** Human-readable display name */
   display_name: string;
   /** Context window size (tokens) */
@@ -627,6 +629,8 @@ export interface ProviderCredentialResponse {
 export interface CreateModelDto {
   /** Model unique identifier */
   model_id: string;
+  /** Optional alias for upstream model name mapping */
+  alias?: string;
   /** Human-readable display name */
   display_name: string;
   /** Context window size */
@@ -639,6 +643,8 @@ export interface CreateModelDto {
  * Update Model request DTO
  */
 export interface UpdateModelDto {
+  /** Optional alias for upstream model name mapping */
+  alias?: string | null;
   /** Human-readable display name */
   display_name?: string;
   /** Context window size */
@@ -657,6 +663,8 @@ export interface ModelResponse {
   id: string;
   /** Model unique identifier */
   model_id: string;
+  /** Optional alias for upstream model name mapping */
+  alias: string | null;
   /** Human-readable display name */
   display_name: string;
   /** Context window size */

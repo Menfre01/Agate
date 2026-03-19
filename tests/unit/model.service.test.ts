@@ -11,6 +11,7 @@ import { NotFoundError, ValidationError, ConflictError } from "@/utils/errors/in
 vi.mock("@/db/queries.js", () => ({
   getModel: vi.fn(),
   getModelByModelId: vi.fn(),
+  getModelByAlias: vi.fn(),
   listModels: vi.fn(),
   createModel: vi.fn(),
   updateModel: vi.fn(),
@@ -36,6 +37,7 @@ describe("ModelService", () => {
   const mockModel: Model = {
     id: "model-123",
     model_id: "claude-3-sonnet",
+    alias: null,
     display_name: "Claude 3 Sonnet",
     context_window: 200000,
     max_tokens: 4096,
@@ -67,6 +69,7 @@ describe("ModelService", () => {
     // Setup mock returns
     vi.mocked(queries.getModel).mockResolvedValue(mockModel);
     vi.mocked(queries.getModelByModelId).mockResolvedValue(mockModel);
+    vi.mocked(queries.getModelByAlias).mockResolvedValue(null);
     vi.mocked(queries.listModels).mockResolvedValue([mockModel]);
     vi.mocked(queries.createModel).mockResolvedValue(mockModel);
     vi.mocked(queries.updateModel).mockResolvedValue(mockModel);
@@ -180,6 +183,45 @@ describe("ModelService", () => {
           max_tokens: 0,
         })
       );
+    });
+
+    it("should create model with alias", async () => {
+      const newModel = { ...mockModel, id: "model-456", model_id: "opus", alias: "glm-5" };
+      vi.mocked(queries.getModelByModelId).mockResolvedValue(null);
+      vi.mocked(queries.createModel).mockResolvedValue(newModel);
+
+      const result = await modelService.createModel({
+        model_id: "opus",
+        alias: "glm-5",
+        display_name: "Opus (mapped to GLM-5)",
+      });
+
+      expect(queries.createModel).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          alias: "glm-5",
+        })
+      );
+      expect(result.alias).toBe("glm-5");
+    });
+
+    it("should create model with null alias when not provided", async () => {
+      const newModel = { ...mockModel, id: "model-456", model_id: "new-model", alias: null };
+      vi.mocked(queries.getModelByModelId).mockResolvedValue(null);
+      vi.mocked(queries.createModel).mockResolvedValue(newModel);
+
+      const result = await modelService.createModel({
+        model_id: "new-model",
+        display_name: "New Model",
+      });
+
+      expect(queries.createModel).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          alias: null,
+        })
+      );
+      expect(result.alias).toBeNull();
     });
   });
 
@@ -415,6 +457,44 @@ describe("ModelService", () => {
           is_active: undefined,
         }
       );
+    });
+
+    it("should update model alias", async () => {
+      const updatedModel = { ...mockModel, alias: "glm-5" };
+      vi.mocked(queries.updateModel).mockResolvedValue(updatedModel);
+
+      const result = await modelService.updateModel("model-123", {
+        alias: "glm-5",
+      });
+
+      expect(queries.updateModel).toHaveBeenCalledWith(
+        expect.anything(),
+        "model-123",
+        expect.objectContaining({
+          alias: "glm-5",
+        })
+      );
+      expect(result.alias).toBe("glm-5");
+    });
+
+    it("should remove model alias by setting to null", async () => {
+      const modelWithAlias = { ...mockModel, alias: "old-alias" };
+      const updatedModel = { ...mockModel, alias: null };
+      vi.mocked(queries.getModel).mockResolvedValue(modelWithAlias);
+      vi.mocked(queries.updateModel).mockResolvedValue(updatedModel);
+
+      const result = await modelService.updateModel("model-123", {
+        alias: null,
+      });
+
+      expect(queries.updateModel).toHaveBeenCalledWith(
+        expect.anything(),
+        "model-123",
+        expect.objectContaining({
+          alias: null,
+        })
+      );
+      expect(result.alias).toBeNull();
     });
   });
 

@@ -20,6 +20,9 @@
         <n-form-item label="模型 ID" path="model_id">
           <n-input v-model:value="formData.model_id" placeholder="例如: claude-3-sonnet" :disabled="isEdit" />
         </n-form-item>
+        <n-form-item label="上游别名" path="alias">
+          <n-input v-model:value="formData.alias" placeholder="例如: glm-5（可选，用于上游请求）" />
+        </n-form-item>
         <n-form-item label="显示名称" path="display_name">
           <n-input v-model:value="formData.display_name" placeholder="例如: Claude 3 Sonnet" />
         </n-form-item>
@@ -153,6 +156,7 @@ const currentModelId = ref('')
 
 const formData = reactive({
   model_id: '',
+  alias: '',
   display_name: '',
   context_window: 200000,
   max_tokens: 4096,
@@ -184,6 +188,12 @@ const availableProviders = computed(() => {
 const columns: DataTableColumns<any> = [
   { title: 'ID', key: 'id', width: 80 },
   { title: '模型 ID', key: 'model_id', width: 180 },
+  {
+    title: '上游别名',
+    key: 'alias',
+    width: 150,
+    render: (row) => row.alias ? h(NTag, { type: 'info', size: 'small' }, () => row.alias) : '-',
+  },
   { title: '显示名称', key: 'display_name', width: 200 },
   { title: '上下文窗口', key: 'context_window', width: 120, render: (row) => row.context_window.toLocaleString() },
   { title: '最大输出', key: 'max_tokens', width: 100, render: (row) => row.max_tokens.toLocaleString() },
@@ -240,6 +250,7 @@ async function loadProviders() {
 function openCreateModal() {
   isEdit.value = false
   formData.model_id = ''
+  formData.alias = ''
   formData.display_name = ''
   formData.context_window = 200000
   formData.max_tokens = 4096
@@ -250,6 +261,7 @@ function openEditModal(row: any) {
   isEdit.value = true
   editId.value = row.id
   formData.model_id = row.model_id
+  formData.alias = row.alias || ''
   formData.display_name = row.display_name
   formData.context_window = row.context_window
   formData.max_tokens = row.max_tokens
@@ -259,6 +271,7 @@ function openEditModal(row: any) {
 function closeModal() {
   showModal.value = false
   formData.model_id = ''
+  formData.alias = ''
   formData.display_name = ''
   formData.context_window = 200000
   formData.max_tokens = 4096
@@ -271,6 +284,7 @@ async function handleSubmit() {
 
     if (isEdit.value) {
       await updateModel(editId.value, {
+        alias: formData.alias || null,
         display_name: formData.display_name,
         context_window: formData.context_window,
         max_tokens: formData.max_tokens,
@@ -279,6 +293,7 @@ async function handleSubmit() {
     } else {
       await createModel({
         model_id: formData.model_id,
+        alias: formData.alias || undefined,
         display_name: formData.display_name,
         context_window: formData.context_window,
         max_tokens: formData.max_tokens,

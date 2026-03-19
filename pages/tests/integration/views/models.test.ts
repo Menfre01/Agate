@@ -58,6 +58,7 @@ describe('ModelsView', () => {
     {
       id: 'model_test_1704067200000_1',
       model_id: 'test-model-1704067200000_1',
+      alias: null,
       display_name: 'Test Model 1704067200000',
       context_window: 200000,
       max_tokens: 4096,

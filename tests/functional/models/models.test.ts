@@ -589,4 +589,129 @@ describe("Models API", () => {
       }
     });
   });
+
+  describe("Model Alias 功能", () => {
+    it("应该创建带 alias 的模型", async () => {
+      const modelData = createModelData({
+        model_id: `opus-${Date.now()}`,
+        alias: "glm-5",
+        display_name: "Opus (映射到 GLM-5)",
+      });
+
+      const response = await apiClient.createModel(modelData);
+
+      if (response.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      expect([201, 409]).toContain(response.status);
+      if (response.status === 201) {
+        expect(response.data.model_id).toContain("opus-");
+        expect(response.data.alias).toBe("glm-5");
+        expect(response.data.display_name).toBe("Opus (映射到 GLM-5)");
+      }
+    });
+
+    it("应该创建不带 alias 的模型（alias 为 null）", async () => {
+      const modelData = createModelData({
+        model_id: `direct-model-${Date.now()}`,
+        display_name: "Direct Model",
+      });
+
+      const response = await apiClient.createModel(modelData);
+
+      if (response.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      expect([201, 409]).toContain(response.status);
+      if (response.status === 201) {
+        expect(response.data.alias).toBeNull();
+      }
+    });
+
+    it("应该更新模型的 alias", async () => {
+      const modelData = createModelData({
+        model_id: `update-alias-${Date.now()}`,
+        display_name: "Update Alias Test",
+      });
+
+      const createResponse = await apiClient.createModel(modelData);
+
+      if (createResponse.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      if (createResponse.status === 201) {
+        const newAlias = `new-alias-${Date.now()}`;
+        const updateResponse = await apiClient.updateModel(
+          createResponse.data.id,
+          { alias: newAlias }
+        );
+
+        expect(updateResponse.status).toBe(200);
+        expect(updateResponse.data.alias).toBe(newAlias);
+      }
+    });
+
+    it("应该移除模型的 alias（设置为 null）", async () => {
+      const modelData = createModelData({
+        model_id: `remove-alias-${Date.now()}`,
+        alias: `temp-alias-${Date.now()}`,
+        display_name: "Remove Alias Test",
+      });
+
+      const createResponse = await apiClient.createModel(modelData);
+
+      if (createResponse.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      if (createResponse.status === 201) {
+        const updateResponse = await apiClient.updateModel(
+          createResponse.data.id,
+          { alias: null }
+        );
+
+        expect(updateResponse.status).toBe(200);
+        expect(updateResponse.data.alias).toBeNull();
+      }
+    });
+
+    it("应该拒绝重复的 alias", async () => {
+      const alias = `duplicate-alias-${Date.now()}`;
+
+      // 创建第一个模型，带 alias
+      const firstModel = createModelData({
+        model_id: `first-alias-model-${Date.now()}`,
+        alias: alias,
+        display_name: "First Model",
+      });
+
+      const firstResponse = await apiClient.createModel(firstModel);
+
+      if (firstResponse.status === 401) {
+        console.log("跳过测试 - 需要有效的管理员 API Key");
+        return;
+      }
+
+      if (firstResponse.status === 201) {
+        // 创建第二个模型，使用相同的 alias
+        const secondModel = createModelData({
+          model_id: `second-alias-model-${Date.now()}`,
+          alias: alias,
+          display_name: "Second Model",
+        });
+
+        const secondResponse = await apiClient.createModel(secondModel);
+
+        // 应该返回 409 Conflict
+        expect(secondResponse.status).toBe(409);
+      }
+    });
+  });
 });

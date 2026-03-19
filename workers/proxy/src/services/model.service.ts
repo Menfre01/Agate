@@ -109,6 +109,7 @@ export class ModelService {
     const model: Model = {
       id: generateId(),
       model_id: dto.model_id,
+      alias: dto.alias ?? null,
       display_name: dto.display_name,
       context_window: dto.context_window ?? 0,
       max_tokens: dto.max_tokens ?? 0,
@@ -137,6 +138,7 @@ export class ModelService {
     }
 
     const updated = await queries.updateModel(this.db, id, {
+      alias: dto.alias,
       display_name: dto.display_name,
       context_window: dto.context_window,
       max_tokens: dto.max_tokens,
@@ -412,6 +414,7 @@ export class ModelService {
     return {
       id: model.id,
       model_id: model.model_id,
+      alias: model.alias,
       display_name: model.display_name,
       context_window: model.context_window,
       max_tokens: model.max_tokens,

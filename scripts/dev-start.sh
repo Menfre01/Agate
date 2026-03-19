@@ -43,6 +43,28 @@ echo -e "${BLUE}  Agate 开发环境启动${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
+# ============================================
+# 设置共享数据库符号链接
+# ============================================
+# 确保所有 worker 使用同一个 D1 数据库
+echo -e "${BLUE}设置共享数据库...${NC}"
+
+SHARED_WRANGLER="$PROJECT_ROOT/.wrangler"
+for worker in proxy admin health; do
+    WORKER_WRANGLER="$PROJECT_ROOT/workers/$worker/.wrangler"
+
+    # 移除现有的本地 .wrangler 目录或符号链接
+    if [ -e "$WORKER_WRANGLER" ]; then
+        rm -rf "$WORKER_WRANGLER"
+    fi
+
+    # 创建符号链接指向共享的 .wrangler 目录
+    ln -s "$SHARED_WRANGLER" "$WORKER_WRANGLER"
+done
+
+echo -e "${GREEN}✓ 共享数据库配置完成${NC}"
+echo ""
+
 # 检查服务是否已运行
 check_running() {
     local name=$1
@@ -104,10 +126,13 @@ start_service() {
 # 检查并启动服务
 all_started=true
 
+# Shared state directory (absolute path)
+SHARED_STATE="$PROJECT_ROOT/.wrangler/state"
+
 # Proxy Worker
 if ! check_running "Proxy Worker" "$PROXY_PID_FILE" "$PROXY_PORT"; then
     if ! start_service "Proxy Worker" \
-        "cd workers/proxy && npx wrangler dev --persist-to=.wrangler/state" \
+        "cd workers/proxy && npx wrangler dev --persist-to=$SHARED_STATE" \
         "$PROXY_PID_FILE" "$PROXY_LOG_FILE" "$PROXY_PORT"; then
         all_started=false
     fi
@@ -116,7 +141,7 @@ fi
 # Admin Worker
 if ! check_running "Admin Worker" "$ADMIN_PID_FILE" "$ADMIN_PORT"; then
     if ! start_service "Admin Worker" \
-        "cd workers/admin && npx wrangler dev --persist-to=.wrangler/state" \
+        "cd workers/admin && npx wrangler dev --persist-to=$SHARED_STATE" \
         "$ADMIN_PID_FILE" "$ADMIN_LOG_FILE" "$ADMIN_PORT"; then
         all_started=false
     fi
@@ -125,7 +150,7 @@ fi
 # Health Worker
 if ! check_running "Health Worker" "$HEALTH_PID_FILE" "$HEALTH_PORT"; then
     if ! start_service "Health Worker" \
-        "cd workers/health && npx wrangler dev --persist-to=.wrangler/state --port=$HEALTH_PORT" \
+        "cd workers/health && npx wrangler dev --persist-to=$SHARED_STATE --port=$HEALTH_PORT" \
         "$HEALTH_PID_FILE" "$HEALTH_LOG_FILE" "$HEALTH_PORT"; then
         all_started=false
     fi

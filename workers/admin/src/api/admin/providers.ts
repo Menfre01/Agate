@@ -128,6 +128,25 @@ export async function deleteProvider(
 }
 
 /**
+ * Handles GET /admin/providers/:id/credentials - List provider credentials.
+ */
+export async function listCredentials(
+  _request: Request,
+  env: Env,
+  context: RequestContext,
+  id: string
+): Promise<Response> {
+  const existing = await queries.getProvider(env.DB, id);
+  if (!existing) {
+    throw new NotFoundError("Provider", id);
+  }
+
+  const credentials = await queries.listProviderCredentials(env.DB, id);
+
+  return withResponseLogging(Response.json({ credentials }), context);
+}
+
+/**
  * Handles POST /admin/providers/:id/credentials - Add provider credential.
  */
 export async function addCredential(
@@ -211,6 +230,20 @@ export function providersRouteHandler(
   const id = parts[3];
 
   try {
+    // Special case: /admin/providers/credentials/:credentialId (direct credential operations)
+    if (parts[3] === "credentials") {
+      if (parts.length === 5 && request.method === "DELETE") {
+        const credentialId = parts[4];
+        if (credentialId) {
+          return deleteCredential(request, env, context, credentialId);
+        }
+      }
+      // Invalid path for credentials without provider ID
+      return Promise.resolve(
+        Response.json({ error: "Invalid path" }, { status: 400 })
+      );
+    }
+
     if (pathname === "/admin/providers" && request.method === "GET") {
       return listProviders(request, env, context);
     }
@@ -237,13 +270,17 @@ export function providersRouteHandler(
       return deleteProvider(request, env, context, id);
     }
 
+    if (parts[4] === "credentials" && request.method === "GET") {
+      return listCredentials(request, env, context, id);
+    }
+
     if (parts[4] === "credentials" && request.method === "POST") {
       return addCredential(request, env, context, id);
     }
 
-    // DELETE /admin/providers/credentials/:id
-    if (parts[3] === "credentials" && parts.length === 5 && request.method === "DELETE") {
-      const credentialId = parts[4];
+    // DELETE /admin/providers/:id/credentials/:credentialId (nested route, backward compatibility)
+    if (parts[4] === "credentials" && parts.length === 6 && request.method === "DELETE") {
+      const credentialId = parts[5];
       if (credentialId) {
         return deleteCredential(request, env, context, credentialId);
       }

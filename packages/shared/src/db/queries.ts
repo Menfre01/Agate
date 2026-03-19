@@ -106,12 +106,14 @@ export interface UpdateProviderDto {
 export interface CreateModelDto {
   id: string;
   model_id: string;
+  alias?: string | null;
   display_name: string;
   context_window?: number;
   max_tokens?: number;
 }
 
 export interface UpdateModelDto {
+  alias?: string | null;
   display_name?: string;
   context_window?: number;
   max_tokens?: number;
@@ -803,6 +805,20 @@ export class Queries {
   }
 
   /**
+   * Get a model by alias.
+   *
+   * @param alias - Model alias
+   * @returns Model object or null if not found
+   */
+  async getModelByAlias(alias: string): Promise<Model | null> {
+    const result = await this.db
+      .prepare('SELECT * FROM models WHERE alias = ?1')
+      .bind(alias)
+      .first<Model>();
+    return result || null;
+  }
+
+  /**
    * List all active models
    *
    * @returns Array of active models
@@ -837,12 +853,13 @@ export class Queries {
     const result = await this.db
       .prepare(
         `INSERT INTO models (
-          id, model_id, display_name, context_window, max_tokens, is_active, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+          id, model_id, alias, display_name, context_window, max_tokens, is_active, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
       )
       .bind(
         data.id,
         data.model_id,
+        data.alias ?? null,
         data.display_name,
         data.context_window ?? 0,
         data.max_tokens ?? 0,
@@ -868,9 +885,13 @@ export class Queries {
    */
   async updateModel(id: string, data: UpdateModelDto): Promise<Model> {
     const updates: string[] = [];
-    const params: (string | number | boolean)[] = [];
+    const params: (string | number | boolean | null)[] = [];
     let paramIndex = 1;
 
+    if (data.alias !== undefined) {
+      updates.push(`alias = ?${paramIndex++}`);
+      params.push(data.alias);
+    }
     if (data.display_name !== undefined) {
       updates.push(`display_name = ?${paramIndex++}`);
       params.push(data.display_name);
@@ -1822,6 +1843,7 @@ export const deleteProvider = (db: D1Database, id: string) => getQueries(db).del
 // Model operations
 export const getModel = (db: D1Database, id: string) => getQueries(db).getModel(id);
 export const getModelByModelId = (db: D1Database, modelId: string) => getQueries(db).getModelByModelId(modelId);
+export const getModelByAlias = (db: D1Database, alias: string) => getQueries(db).getModelByAlias(alias);
 export const listActiveModels = (db: D1Database) => getQueries(db).listActiveModels();
 export const listModels = (db: D1Database) => getQueries(db).listModels();
 export const createModel = (db: D1Database, data: CreateModelDto) => getQueries(db).createModel(data);

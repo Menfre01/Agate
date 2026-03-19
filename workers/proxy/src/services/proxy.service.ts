@@ -173,7 +173,8 @@ export class ProxyService {
     const upstreamRequest = this.buildUpstreamRequest(
       request,
       credential,
-      requestId
+      requestId,
+      model
     );
 
     // Execute request
@@ -271,6 +272,7 @@ export class ProxyService {
    * @param request - Original request data
    * @param credential - Selected provider credential
    * @param requestId - Request ID for tracing
+   * @param model - Model entity with optional alias
    * @returns Fetch request init
    */
   private buildUpstreamRequest(
@@ -279,7 +281,8 @@ export class ProxyService {
       apiKey: string;
       apiVersion: string | null;
     },
-    requestId: string
+    requestId: string,
+    model: { alias: string | null }
   ): RequestInit {
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -288,9 +291,12 @@ export class ProxyService {
       "x-request-id": requestId,
     };
 
+    // Use alias as upstream model name, fallback to original model_id
+    const upstreamModel = model.alias ?? request.model;
+
     // Build request body
     const body = JSON.stringify({
-      model: request.model,
+      model: upstreamModel,
       messages: request.messages,
       max_tokens: request.max_tokens,
       ...(request.system && { system: request.system }),

@@ -1,12 +1,24 @@
 /**
  * Global Test Setup
  *
- * Configures test-wide behaviors including cleanup hooks.
+ * Configures test-wide behaviors.
  *
  * @module tests/setup
  */
 
-import { afterEach, afterAll } from "vitest";
+import { afterAll, beforeAll } from "vitest";
+import { webcrypto } from "node:crypto";
+
+/**
+ * Polyfill Web Crypto API for Node.js environment.
+ * Vitest runs in Node.js, but Cloudflare Workers use Web Crypto API.
+ */
+beforeAll(() => {
+  // Ensure globalThis.crypto is available (Node.js 20+)
+  if (typeof globalThis.crypto === "undefined") {
+    (globalThis as any).crypto = webcrypto;
+  }
+});
 
 /**
  * Flag to enable/disable automatic test cleanup.
@@ -15,44 +27,22 @@ import { afterEach, afterAll } from "vitest";
 const ENABLE_CLEANUP = process.env.TEST_CLEANUP === "true";
 
 /**
- * Tracks whether we've already run cleanup to avoid duplicate calls.
- */
-let cleanupCompleted = false;
-
-/**
  * Global cleanup function for functional tests.
- * Called automatically after all tests complete if TEST_CLEANUP=true.
+ *
+ * Note: Test data cleanup should be handled by individual test files
+ * using the helper functions in tests/functional/helpers/database.helper.ts
+ *
+ * For manual cleanup, run:
+ *   npx tsx tests/cleanup.sql.ts | wrangler d1 execute ai-gateway-db --local --command=-
  */
 async function globalCleanup() {
-  if (!ENABLE_CLEANUP || cleanupCompleted) {
+  if (!ENABLE_CLEANUP) {
     return;
   }
 
-  const adminBaseUrl = process.env.TEST_ADMIN_BASE_URL || "http://localhost:8788";
-  const adminApiKey = process.env.TEST_ADMIN_API_KEY || "sk-admin_dev_fixed_key_local_2024";
-
-  try {
-    console.log("\n[Test Setup] Running test data cleanup...");
-    const response = await fetch(`${adminBaseUrl}/admin/test/cleanup`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${adminApiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`[Test Setup] Cleanup completed: ${result.deletedRows} rows deleted from ${result.tables.length} tables`);
-    } else {
-      console.warn(`[Test Setup] Cleanup failed: ${response.status} ${response.statusText}`);
-    }
-  } catch (error) {
-    // Don't fail tests if cleanup doesn't work (server might not be running)
-    console.warn("[Test Setup] Cleanup skipped (server may not be running):", error);
-  }
-
-  cleanupCompleted = true;
+  console.log("\n[Test Setup] TEST_CLEANUP is enabled.");
+  console.log("[Test Setup] Note: Individual tests are responsible for their own data cleanup.");
+  console.log("[Test Setup] For manual cleanup, use: npx tsx tests/cleanup.sql.ts | wrangler d1 execute ai-gateway-db --local --command=-");
 }
 
 /**
@@ -61,13 +51,5 @@ async function globalCleanup() {
 afterAll(async () => {
   await globalCleanup();
 });
-
-/**
- * Optional: Run cleanup after each test suite.
- * Uncomment to enable more frequent cleanup (slower but safer).
- */
-// afterEach(async () => {
-//   await globalCleanup();
-// });
 
 export {};

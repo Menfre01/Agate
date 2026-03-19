@@ -105,10 +105,19 @@ export class ModelService {
       throw new ConflictError("Model", "model_id", dto.model_id);
     }
 
+    // Check if alias already exists
+    if (dto.alias) {
+      const existingAlias = await queries.getModelByAlias(this.db, dto.alias);
+      if (existingAlias) {
+        throw new ConflictError("Model", "alias", dto.alias);
+      }
+    }
+
     const now = Date.now();
     const model: Model = {
       id: generateId(),
       model_id: dto.model_id,
+      alias: dto.alias ?? null,
       display_name: dto.display_name,
       context_window: dto.context_window ?? 0,
       max_tokens: dto.max_tokens ?? 0,
@@ -136,7 +145,18 @@ export class ModelService {
       throw new NotFoundError("Model", id);
     }
 
+    // Check if new alias already exists (and belongs to a different model)
+    if (dto.alias !== undefined && dto.alias !== existing.alias) {
+      if (dto.alias !== null) {
+        const existingAlias = await queries.getModelByAlias(this.db, dto.alias);
+        if (existingAlias && existingAlias.id !== id) {
+          throw new ConflictError("Model", "alias", dto.alias);
+        }
+      }
+    }
+
     const updated = await queries.updateModel(this.db, id, {
+      alias: dto.alias,
       display_name: dto.display_name,
       context_window: dto.context_window,
       max_tokens: dto.max_tokens,
@@ -412,6 +432,7 @@ export class ModelService {
     return {
       id: model.id,
       model_id: model.model_id,
+      alias: model.alias,
       display_name: model.display_name,
       context_window: model.context_window,
       max_tokens: model.max_tokens,

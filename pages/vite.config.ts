@@ -45,10 +45,22 @@ export default defineConfig({
       '/admin': {
         target: 'http://localhost:8788',
         changeOrigin: true,
+        // 只代理 API 请求（不包含 text/html 的 Accept 头）
+        bypass: (req, res, options) => {
+          if (req.headers.accept?.includes('text/html')) {
+            // HTML 导航请求：返回 index.html
+            return '/index.html'
+          }
+        },
       },
       '/user': {
         target: 'http://localhost:8788',
         changeOrigin: true,
+        bypass: (req, res, options) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
       },
     },
   },
