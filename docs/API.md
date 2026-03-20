@@ -252,12 +252,15 @@ POST   /admin/keys/:id/bonus          # Add bonus quota
 #### Providers
 
 ```bash
-GET    /admin/providers                    # List providers
-POST   /admin/providers                    # Create provider
-GET    /admin/providers/:id                # Get provider details
-PUT    /admin/providers/:id                # Update provider
-DELETE /admin/providers/:id                # Delete provider
-POST   /admin/providers/:id/credentials    # Add credential
+GET    /admin/providers                       # List providers
+POST   /admin/providers                       # Create provider
+GET    /admin/providers/:id                   # Get provider details
+PUT    /admin/providers/:id                   # Update provider
+DELETE /admin/providers/:id                   # Delete provider
+POST   /admin/providers/:id/credentials       # Add credential
+DELETE /admin/providers/credentials/:id       # Delete credential
+GET    /admin/providers/health-status         # Get all credentials health status
+POST   /admin/providers/credentials/:id/health-check  # Trigger health check
 ```
 
 **Create Provider Request:**
@@ -335,10 +338,12 @@ POST   /admin/quotas/:entityType/:entityId/bonus    # Add bonus quota
 #### Statistics
 
 ```bash
-GET /admin/stats/usage    # Usage statistics
-GET /admin/stats/tokens   # Token usage
-GET /admin/stats/costs    # Cost analysis
-GET /admin/stats/models   # Model usage statistics
+GET /admin/stats/usage               # Usage statistics
+GET /admin/stats/tokens              # Token usage
+GET /admin/stats/costs               # Cost analysis
+GET /admin/stats/models              # Model usage statistics
+GET /admin/stats/health-check        # Health check statistics
+GET /admin/stats/health-check/usage  # Health check usage logs
 ```
 
 **Usage Statistics Parameters:**
@@ -631,12 +636,15 @@ POST   /admin/keys/:id/bonus          # 添加奖励配额
 #### 供应商管理
 
 ```bash
-GET    /admin/providers                    # 列出供应商
-POST   /admin/providers                    # 创建供应商
-GET    /admin/providers/:id                # 获取供应商详情
-PUT    /admin/providers/:id                # 更新供应商
-DELETE /admin/providers/:id                # 删除供应商
-POST   /admin/providers/:id/credentials    # 添加凭证
+GET    /admin/providers                       # 列出供应商
+POST   /admin/providers                       # 创建供应商
+GET    /admin/providers/:id                   # 获取供应商详情
+PUT    /admin/providers/:id                   # 更新供应商
+DELETE /admin/providers/:id                   # 删除供应商
+POST   /admin/providers/:id/credentials       # 添加凭证
+DELETE /admin/providers/credentials/:id       # 删除凭证
+GET    /admin/providers/health-status         # 查看所有凭证健康状态
+POST   /admin/providers/credentials/:id/health-check  # 手动触发健康检查
 ```
 
 **创建供应商请求：**
@@ -714,10 +722,12 @@ POST   /admin/quotas/:entityType/:entityId/bonus    # 添加奖励配额
 #### 统计分析
 
 ```bash
-GET /admin/stats/usage    # 使用统计
-GET /admin/stats/tokens   # Token 用量
-GET /admin/stats/costs    # 成本分析
-GET /admin/stats/models   # 模型使用统计
+GET /admin/stats/usage               # 使用统计
+GET /admin/stats/tokens              # Token 用量
+GET /admin/stats/costs               # 成本分析
+GET /admin/stats/models              # 模型使用统计
+GET /admin/stats/health-check        # 健康检查统计
+GET /admin/stats/health-check/usage  # 健康检查使用日志
 ```
 
 **使用统计参数：**
