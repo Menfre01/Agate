@@ -67,6 +67,16 @@ export interface Department {
 }
 
 /**
+ * Department with additional details (company name and user count)
+ */
+export interface DepartmentWithDetails extends Department {
+  /** Company name */
+  company_name: string;
+  /** Number of users in this department */
+  user_count: number;
+}
+
+/**
  * User role enumeration
  */
 export type UserRole = 'admin' | 'user';
@@ -325,6 +335,11 @@ export interface UsageLog {
   response_time_ms: number | null;
   /** Creation timestamp */
   created_at: number;
+  /** Joined fields (populated via LEFT JOIN in queryUsageLogs) */
+  user_email?: string;
+  company_name?: string;
+  department_name?: string | null;
+  provider_name?: string;
 }
 
 /**
@@ -840,6 +855,28 @@ export interface ModelStatsResponse {
   avg_response_time_ms: number;
 }
 
+/**
+ * Provider-Model usage statistics response
+ */
+export interface ProviderModelStatsResponse {
+  /** Provider ID */
+  provider_id: string;
+  /** Provider name */
+  provider_name: string;
+  /** Model ID */
+  model_id: string;
+  /** Model name */
+  model_name: string;
+  /** Request count */
+  request_count: number;
+  /** Input tokens */
+  input_tokens: number;
+  /** Output tokens */
+  output_tokens: number;
+  /** Total tokens */
+  total_tokens: number;
+}
+
 // ---------------------
 // Admin API DTOs - Quotas
 // ---------------------
@@ -1185,6 +1222,8 @@ export interface UsageLogsQuery {
   start_at?: number;
   /** End timestamp (optional) */
   end_at?: number;
+  /** Search by user email or name (optional) */
+  search?: string;
   /** Filter by user ID (optional) */
   user_id?: string;
   /** Filter by company ID (optional) */

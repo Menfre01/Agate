@@ -137,6 +137,7 @@ export class UsageService {
     const { logs, total } = await queries.queryUsageLogs(this.db, {
       start_at: query.start_at,
       end_at: query.end_at,
+      search: query.search,
       user_id: query.user_id,
       company_id: query.company_id,
       department_id: query.department_id,
@@ -154,13 +155,13 @@ export class UsageService {
       page,
       page_size: pageSize,
       total_pages: totalPages,
-      logs: logs.map((log) => ({
+      logs: logs.map((log: any) => ({
         id: log.id,
         api_key_id: log.api_key_id,
-        user_email: "", // Populated via JOIN
-        company_name: "", // Populated via JOIN
-        department_name: null,
-        provider_name: "", // Populated via JOIN
+        user_email: log.user_email || "",
+        company_name: log.company_name || "",
+        department_name: log.department_name || null,
+        provider_name: log.provider_name || "",
         model_name: log.model_name,
         endpoint: log.endpoint,
         input_tokens: log.input_tokens,
@@ -328,6 +329,42 @@ export class UsageService {
       avg_tokens_per_request: s.avg_tokens_per_request ?? 0,
       success_rate: s.success_rate ?? 0,
       avg_response_time_ms: s.avg_response_time_ms ?? 0,
+    }));
+  }
+
+  /**
+   * Gets provider-model usage statistics.
+   *
+   * @param query - Query parameters
+   * @returns Provider-model stats response
+   */
+  async getProviderModelStats(
+    query: Pick<UsageStatsQuery, "start_at" | "end_at" | "company_id">
+  ): Promise<Array<{
+    provider_id: string;
+    provider_name: string;
+    model_id: string;
+    model_name: string;
+    request_count: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  }>> {
+    const stats = await queries.getProviderModelStats(this.db, {
+      start_at: query.start_at,
+      end_at: query.end_at,
+      company_id: query.company_id,
+    });
+
+    return stats.map((s) => ({
+      provider_id: s.provider_id,
+      provider_name: s.provider_name,
+      model_id: s.model_id,
+      model_name: s.model_name,
+      request_count: s.requests,
+      input_tokens: s.input_tokens,
+      output_tokens: s.output_tokens,
+      total_tokens: s.total_tokens,
     }));
   }
 

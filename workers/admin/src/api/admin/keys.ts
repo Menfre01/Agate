@@ -33,6 +33,13 @@ export async function listKeys(
   const userId = url.searchParams.get("user_id") ?? undefined;
   const companyId = url.searchParams.get("company_id") ?? undefined;
   const departmentId = url.searchParams.get("department_id") ?? undefined;
+  const isActive = url.searchParams.get("is_active");
+  const search = url.searchParams.get("search");
+  const pageStr = url.searchParams.get("page");
+  const pageSizeStr = url.searchParams.get("page_size");
+
+  const page = pageStr ? parseInt(pageStr, 10) : 1;
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
 
   const keyService = new KeyService(env);
   const keys = await keyService.listApiKeys({
@@ -41,8 +48,36 @@ export async function listKeys(
     department_id: departmentId,
   });
 
+  // Apply filters
+  let filteredKeys = keys;
+  if (isActive && isActive !== 'null' && isActive !== '') {
+    const activeBool = isActive === 'true';
+    filteredKeys = filteredKeys.filter((k: any) => k.is_active === activeBool);
+  }
+  if (search) {
+    const searchLower = search.toLowerCase();
+    filteredKeys = filteredKeys.filter((k: any) =>
+      (k.key_prefix && k.key_prefix.toLowerCase().includes(searchLower)) ||
+      (k.user_email && k.user_email.toLowerCase().includes(searchLower)) ||
+      (k.name && k.name.toLowerCase().includes(searchLower))
+    );
+  }
+
+  // Apply pagination
+  const total = filteredKeys.length;
+  const totalPages = Math.ceil(total / pageSize);
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedKeys = filteredKeys.slice(startIndex, endIndex);
+
   return withResponseLogging(
-    Response.json({ keys }),
+    Response.json({
+      keys: paginatedKeys,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: totalPages,
+    }),
     context
   );
 }

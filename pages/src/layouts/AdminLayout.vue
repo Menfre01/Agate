@@ -21,6 +21,7 @@
         :collapsed-icon-size="22"
         :options="menuOptions"
         :value="activeKey"
+        @update:value="handleMenuSelect"
       />
     </n-layout-sider>
 
@@ -31,9 +32,9 @@
           <n-dropdown :options="userMenuOptions" @select="handleUserMenuSelect">
             <div class="user-info">
               <n-avatar round size="small" type="info">
-                {{ userStore.userName?.charAt(0).toUpperCase() }}
+                {{ userStore.userName ? userStore.userName.charAt(0).toUpperCase() : '?' }}
               </n-avatar>
-              <span class="user-name">{{ userStore.userName }}</span>
+              <span class="user-name">{{ userStore.userName || '未知用户' }}</span>
               <n-tag size="small" type="info">管理员</n-tag>
             </div>
           </n-dropdown>
@@ -81,54 +82,61 @@ const userStore = useUserStore()
 
 const collapsed = ref(false)
 
+// 图标渲染函数
+const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
+
+// 路由映射
+const routeMap: Record<string, string> = {
+  'admin-dashboard': '/admin/dashboard',
+  'admin-users': '/admin/users',
+  'admin-companies': '/admin/companies',
+  'admin-departments': '/admin/departments',
+  'admin-keys': '/admin/keys',
+  'admin-providers': '/admin/providers',
+  'admin-models': '/admin/models',
+  'admin-logs': '/admin/logs',
+}
+
 const menuOptions: MenuOption[] = [
   {
     label: '仪表盘',
     key: 'admin-dashboard',
-    icon: () => h(NIcon, null, { default: () => h(DashboardOutlined) }),
-    onClick: () => router.push('/admin/dashboard'),
+    icon: renderIcon(DashboardOutlined),
   },
   {
     label: '用户管理',
     key: 'admin-users',
-    icon: () => h(NIcon, null, { default: () => h(UserOutlined) }),
-    onClick: () => router.push('/admin/users'),
+    icon: renderIcon(UserOutlined),
   },
   {
     label: '公司管理',
     key: 'admin-companies',
-    icon: () => h(NIcon, null, { default: () => h(TeamOutlined) }),
-    onClick: () => router.push('/admin/companies'),
+    icon: renderIcon(TeamOutlined),
   },
   {
     label: '部门管理',
     key: 'admin-departments',
-    icon: () => h(NIcon, null, { default: () => h(ApartmentOutlined) }),
-    onClick: () => router.push('/admin/departments'),
+    icon: renderIcon(ApartmentOutlined),
   },
   {
     label: 'API Key 管理',
     key: 'admin-keys',
-    icon: () => h(NIcon, null, { default: () => h(KeyOutlined) }),
-    onClick: () => router.push('/admin/keys'),
+    icon: renderIcon(KeyOutlined),
   },
   {
     label: '提供商管理',
     key: 'admin-providers',
-    icon: () => h(NIcon, null, { default: () => h(CloudServerOutlined) }),
-    onClick: () => router.push('/admin/providers'),
+    icon: renderIcon(CloudServerOutlined),
   },
   {
     label: '模型管理',
     key: 'admin-models',
-    icon: () => h(NIcon, null, { default: () => h(RobotOutlined) }),
-    onClick: () => router.push('/admin/models'),
+    icon: renderIcon(RobotOutlined),
   },
   {
     label: '日志查询',
     key: 'admin-logs',
-    icon: () => h(NIcon, null, { default: () => h(FileTextOutlined) }),
-    onClick: () => router.push('/admin/logs'),
+    icon: renderIcon(FileTextOutlined),
   },
 ]
 
@@ -136,7 +144,7 @@ const userMenuOptions = [
   {
     label: '退出登录',
     key: 'logout',
-    icon: () => h(NIcon, null, { default: () => h(LogoutOutlined) }),
+    icon: renderIcon(LogoutOutlined),
   },
 ]
 
@@ -156,6 +164,13 @@ const activeKey = computed(() => {
 const currentTitle = computed(() => {
   return route.meta.title as string || '管理后台'
 })
+
+function handleMenuSelect(key: string) {
+  const path = routeMap[key]
+  if (path) {
+    router.push(path)
+  }
+}
 
 function handleUserMenuSelect(key: string) {
   if (key === 'logout') {

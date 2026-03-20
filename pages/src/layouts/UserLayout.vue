@@ -32,9 +32,9 @@
           <n-dropdown :options="userMenuOptions" @select="handleUserMenuSelect">
             <div class="user-info">
               <n-avatar round size="small">
-                {{ userStore.userName?.charAt(0).toUpperCase() }}
+                {{ userStore.userName ? userStore.userName.charAt(0).toUpperCase() : '?' }}
               </n-avatar>
-              <span class="user-name">{{ userStore.userName }}</span>
+              <span class="user-name">{{ userStore.userName || '未知用户' }}</span>
             </div>
           </n-dropdown>
         </div>
@@ -75,18 +75,24 @@ const userStore = useUserStore()
 
 const collapsed = ref(false)
 
+// 图标渲染函数
+const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
+
+const routeMap: Record<string, string> = {
+  'user-profile': '/user/profile',
+  'user-stats': '/user/stats',
+}
+
 const menuOptions: MenuOption[] = [
   {
     label: '个人信息',
     key: 'user-profile',
-    icon: () => h(NIcon, null, { default: () => h(UserOutlined) }),
-    onClick: () => router.push('/user/profile'),
+    icon: renderIcon(UserOutlined),
   },
   {
     label: '用量统计',
     key: 'user-stats',
-    icon: () => h(NIcon, null, { default: () => h(BarChartOutlined) }),
-    onClick: () => router.push('/user/stats'),
+    icon: renderIcon(BarChartOutlined),
   },
 ]
 
@@ -94,7 +100,7 @@ const userMenuOptions = [
   {
     label: '退出登录',
     key: 'logout',
-    icon: () => h(NIcon, null, { default: () => h(LogoutOutlined) }),
+    icon: renderIcon(LogoutOutlined),
   },
 ]
 
@@ -110,7 +116,10 @@ const currentTitle = computed(() => {
 })
 
 function handleMenuSelect(key: string) {
-  // Menu click is handled by onClick
+  const path = routeMap[key]
+  if (path) {
+    router.push(path)
+  }
 }
 
 function handleUserMenuSelect(key: string) {

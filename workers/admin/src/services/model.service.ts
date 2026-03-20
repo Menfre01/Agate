@@ -423,7 +423,7 @@ export class ModelService {
 
     const providers = modelProviders.map((mp) => ({
       provider_id: mp.provider_id,
-      provider_name: mp.provider_name,
+      provider_name: mp.provider_display_name,
       input_price: mp.input_price,
       output_price: mp.output_price,
       is_active: Boolean(mp.is_active),

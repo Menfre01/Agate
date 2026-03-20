@@ -43,6 +43,14 @@ export async function listUsers(
   const url = new URL(request.url);
   const companyId = url.searchParams.get("company_id");
   const departmentId = url.searchParams.get("department_id");
+  const role = url.searchParams.get("role");
+  const isActive = url.searchParams.get("is_active");
+  const search = url.searchParams.get("search");
+  const pageStr = url.searchParams.get("page");
+  const pageSizeStr = url.searchParams.get("page_size");
+
+  const page = pageStr ? parseInt(pageStr, 10) : 1;
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
 
   let users;
   if (companyId) {
@@ -53,14 +61,44 @@ export async function listUsers(
     users = await queries.listAllUsers(env.DB);
   }
 
+  // Apply filters
+  let filteredUsers = users;
+  if (role) {
+    filteredUsers = filteredUsers.filter((u: any) => u.role === role);
+  }
+  if (isActive && isActive !== 'null' && isActive !== '') {
+    const activeBool = isActive === 'true';
+    filteredUsers = filteredUsers.filter((u: any) => Boolean(u.is_active) === activeBool);
+  }
+  if (search) {
+    const searchLower = search.toLowerCase();
+    filteredUsers = filteredUsers.filter((u: any) =>
+      (u.email && u.email.toLowerCase().includes(searchLower)) ||
+      (u.name && u.name.toLowerCase().includes(searchLower))
+    );
+  }
+
   // Add is_system flag for system users
-  const usersWithSystemFlag = users.map((user: any) => ({
+  const usersWithSystemFlag = filteredUsers.map((user: any) => ({
     ...user,
     is_system: isSystemUser(user.id),
   }));
 
+  // Apply pagination
+  const total = usersWithSystemFlag.length;
+  const totalPages = Math.ceil(total / pageSize);
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedUsers = usersWithSystemFlag.slice(startIndex, endIndex);
+
   return withResponseLogging(
-    Response.json({ users: usersWithSystemFlag }),
+    Response.json({
+      users: paginatedUsers,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: totalPages,
+    }),
     context
   );
 }

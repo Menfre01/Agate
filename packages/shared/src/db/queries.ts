@@ -11,6 +11,7 @@
 import type {
   Company,
   Department,
+  DepartmentWithDetails,
   User,
   Provider,
   Model,
@@ -293,14 +294,21 @@ export class Queries {
   }
 
   /**
-   * List all companies
+   * List all companies with user and department counts
    *
-   * @returns Array of all companies
+   * @returns Array of all companies with stats
    */
-  async listCompanies(): Promise<Company[]> {
+  async listCompanies(): Promise<any[]> {
     const result = await this.db
-      .prepare('SELECT * FROM companies ORDER BY created_at DESC')
-      .all<Company>();
+      .prepare(`
+        SELECT
+          c.*,
+          (SELECT COUNT(*) FROM users WHERE users.company_id = c.id AND users.is_active = TRUE) as user_count,
+          (SELECT COUNT(*) FROM departments WHERE departments.company_id = c.id) as department_count
+        FROM companies c
+        ORDER BY c.created_at DESC
+      `)
+      .all();
     return result.results;
   }
 
@@ -340,25 +348,46 @@ export class Queries {
    * List departments by company ID
    *
    * @param companyId - Company ID
-   * @returns Array of departments
+   * @returns Array of departments with company name and user count
    */
-  async listDepartmentsByCompany(companyId: string): Promise<Department[]> {
+  async listDepartmentsByCompany(companyId: string): Promise<DepartmentWithDetails[]> {
     const result = await this.db
-      .prepare('SELECT * FROM departments WHERE company_id = ?1 ORDER BY name')
+      .prepare(`
+        SELECT
+          d.*,
+          c.name as company_name,
+          COUNT(u.id) as user_count
+        FROM departments d
+        LEFT JOIN companies c ON d.company_id = c.id
+        LEFT JOIN users u ON d.id = u.department_id
+        WHERE d.company_id = ?1
+        GROUP BY d.id
+        ORDER BY d.name
+      `)
       .bind(companyId)
-      .all<Department>();
+      .all<DepartmentWithDetails>();
     return result.results;
   }
 
   /**
    * List all departments
    *
-   * @returns Array of all departments
+   * @returns Array of all departments with company name and user count
    */
-  async listAllDepartments(): Promise<Department[]> {
+  async listAllDepartments(): Promise<DepartmentWithDetails[]> {
     const result = await this.db
-      .prepare('SELECT * FROM departments ORDER BY company_id, name')
-      .all<Department>();
+      .prepare(`
+        SELECT
+          d.*,
+          c.name as company_name,
+          COUNT(u.id) as user_count
+        FROM departments d
+        LEFT JOIN companies c ON d.company_id = c.id
+        LEFT JOIN users u ON d.id = u.department_id
+        GROUP BY d.id
+        ORDER BY d.company_id, d.name
+      `)
+      .all<DepartmentWithDetails>();
     return result.results;
   }
 
@@ -489,11 +518,21 @@ export class Queries {
    * @param companyId - Company ID
    * @returns Array of users
    */
-  async listUsersByCompany(companyId: string): Promise<User[]> {
+  async listUsersByCompany(companyId: string): Promise<any[]> {
     const result = await this.db
-      .prepare('SELECT * FROM users WHERE company_id = ?1 ORDER BY created_at DESC')
+      .prepare(`
+        SELECT u.*,
+          c.name as company_name,
+          d.name as department_name,
+          (SELECT COUNT(*) FROM api_keys WHERE user_id = u.id) as api_key_count
+        FROM users u
+        LEFT JOIN companies c ON u.company_id = c.id
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE u.company_id = ?1
+        ORDER BY u.created_at DESC
+      `)
       .bind(companyId)
-      .all<User>();
+      .all();
     return result.results;
   }
 
@@ -503,11 +542,21 @@ export class Queries {
    * @param departmentId - Department ID
    * @returns Array of users
    */
-  async listUsersByDepartment(departmentId: string): Promise<User[]> {
+  async listUsersByDepartment(departmentId: string): Promise<any[]> {
     const result = await this.db
-      .prepare('SELECT * FROM users WHERE department_id = ?1 ORDER BY created_at DESC')
+      .prepare(`
+        SELECT u.*,
+          c.name as company_name,
+          d.name as department_name,
+          (SELECT COUNT(*) FROM api_keys WHERE user_id = u.id) as api_key_count
+        FROM users u
+        LEFT JOIN companies c ON u.company_id = c.id
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE u.department_id = ?1
+        ORDER BY u.created_at DESC
+      `)
       .bind(departmentId)
-      .all<User>();
+      .all();
     return result.results;
   }
 
@@ -516,10 +565,19 @@ export class Queries {
    *
    * @returns Array of all users
    */
-  async listAllUsers(): Promise<User[]> {
+  async listAllUsers(): Promise<any[]> {
     const result = await this.db
-      .prepare('SELECT * FROM users ORDER BY company_id, created_at DESC')
-      .all<User>();
+      .prepare(`
+        SELECT u.*,
+          c.name as company_name,
+          d.name as department_name,
+          (SELECT COUNT(*) FROM api_keys WHERE user_id = u.id) as api_key_count
+        FROM users u
+        LEFT JOIN companies c ON u.company_id = c.id
+        LEFT JOIN departments d ON u.department_id = d.id
+        ORDER BY u.company_id, u.created_at DESC
+      `)
+      .all();
     return result.results;
   }
 
@@ -2016,6 +2074,7 @@ export const createQuotaChange = (db: D1Database, data: QuotaChangeDto) =>
 
 // Usage query operations
 export const queryUsageLogs = async (db: D1Database, options: {
+  search?: string;
   api_key_id?: string;
   user_id?: string;
   company_id?: string;
@@ -2031,36 +2090,41 @@ export const queryUsageLogs = async (db: D1Database, options: {
   const params: any[] = [];
   let paramIndex = 1;
 
+  if (options.search) {
+    conditions.push(`(u.email LIKE ?${paramIndex++} OR u.name LIKE ?${paramIndex++})`);
+    const searchPattern = `%${options.search}%`;
+    params.push(searchPattern, searchPattern);
+  }
   if (options.api_key_id) {
-    conditions.push(`api_key_id = ?${paramIndex++}`);
+    conditions.push(`ul.api_key_id = ?${paramIndex++}`);
     params.push(options.api_key_id);
   }
   if (options.user_id) {
-    conditions.push(`user_id = ?${paramIndex++}`);
+    conditions.push(`ul.user_id = ?${paramIndex++}`);
     params.push(options.user_id);
   }
   if (options.company_id) {
-    conditions.push(`company_id = ?${paramIndex++}`);
+    conditions.push(`ul.company_id = ?${paramIndex++}`);
     params.push(options.company_id);
   }
   if (options.department_id) {
-    conditions.push(`department_id = ?${paramIndex++}`);
+    conditions.push(`ul.department_id = ?${paramIndex++}`);
     params.push(options.department_id);
   }
   if (options.model_id) {
-    conditions.push(`model_id = ?${paramIndex++}`);
+    conditions.push(`ul.model_id = ?${paramIndex++}`);
     params.push(options.model_id);
   }
   if (options.status) {
-    conditions.push(`status = ?${paramIndex++}`);
+    conditions.push(`ul.status = ?${paramIndex++}`);
     params.push(options.status);
   }
   if (options.start_at) {
-    conditions.push(`created_at >= ?${paramIndex++}`);
+    conditions.push(`ul.created_at >= ?${paramIndex++}`);
     params.push(options.start_at);
   }
   if (options.end_at) {
-    conditions.push(`created_at <= ?${paramIndex++}`);
+    conditions.push(`ul.created_at <= ?${paramIndex++}`);
     params.push(options.end_at);
   }
 
@@ -2070,16 +2134,30 @@ export const queryUsageLogs = async (db: D1Database, options: {
 
   // First get count
   const countResult = await db
-    .prepare(`SELECT COUNT(*) as count FROM usage_logs ${whereClause}`)
+    .prepare(`SELECT COUNT(*) as count FROM usage_logs ul LEFT JOIN users u ON ul.user_id = u.id ${whereClause}`)
     .bind(...params)
     .first<{ count: number }>();
   const total = countResult?.count ?? 0;
 
-  // Then get the data
+  // Then get the data with JOINs to get user email, company name, department name, provider name
   const result = await db
-    .prepare(`SELECT * FROM usage_logs ${whereClause} ORDER BY created_at DESC LIMIT ?${paramIndex++} OFFSET ?${paramIndex++}`)
+    .prepare(`
+      SELECT ul.*,
+        u.email as user_email,
+        c.name as company_name,
+        d.name as department_name,
+        p.name as provider_name
+      FROM usage_logs ul
+      LEFT JOIN users u ON ul.user_id = u.id
+      LEFT JOIN companies c ON ul.company_id = c.id
+      LEFT JOIN departments d ON ul.department_id = d.id
+      LEFT JOIN providers p ON ul.provider_id = p.id
+      ${whereClause}
+      ORDER BY ul.created_at DESC
+      LIMIT ?${paramIndex++} OFFSET ?${paramIndex++}
+    `)
     .bind(...params, limit, offset)
-    .all<UsageLog>();
+    .all();
 
   return { logs: result.results, total };
 };
@@ -2123,7 +2201,15 @@ export const getUsageStats = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT COUNT(*) as total_requests, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause}`
+    `SELECT
+      COUNT(*) as total_requests,
+      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_requests,
+      SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as failed_requests,
+      SUM(input_tokens) as input_tokens,
+      SUM(output_tokens) as output_tokens,
+      SUM(total_tokens) as total_tokens,
+      SUM(total_tokens * 0.00001) as estimated_cost
+    FROM usage_logs ${whereClause}`
   ).bind(...params).first();
   return result;
 };
@@ -2136,7 +2222,6 @@ export const getUsageStatsGrouped = async (db: D1Database, options: {
   model_id?: string;
   group_by: string;
 }): Promise<any[]> => {
-  const column = options.group_by === 'model' ? 'model_id' : options.group_by === 'user' ? 'user_id' : 'provider_id';
   const conditions: string[] = [];
   const params: any[] = [];
   let paramIndex = 1;
@@ -2168,8 +2253,29 @@ export const getUsageStatsGrouped = async (db: D1Database, options: {
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Handle different group_by options
+  let selectClause: string;
+  let groupByClause: string;
+
+  if (options.group_by === 'day') {
+    // Group by date: format timestamp as YYYY-MM-DD
+    selectClause = `date(created_at / 1000, 'unixepoch') as group_key`;
+    groupByClause = `date(created_at / 1000, 'unixepoch')`;
+  } else if (options.group_by === 'model') {
+    selectClause = `'model-' || model_id as group_key`;
+    groupByClause = `model_id`;
+  } else if (options.group_by === 'user') {
+    selectClause = `user_id as group_key`;
+    groupByClause = `user_id`;
+  } else {
+    // Default to provider
+    selectClause = `provider_id as group_key`;
+    groupByClause = `provider_id`;
+  }
+
   const result = await db.prepare(
-    `SELECT ${column} as group_key, COUNT(*) as request_count, SUM(total_tokens) as total_tokens, SUM(total_tokens * 0.00001) as estimated_cost FROM usage_logs ${whereClause} GROUP BY ${column}`
+    `SELECT ${selectClause}, COUNT(*) as request_count, SUM(total_tokens) as total_tokens, SUM(total_tokens * 0.00001) as estimated_cost FROM usage_logs ${whereClause} GROUP BY ${groupByClause}`
   ).bind(...params).all();
   return result.results;
 };
@@ -2301,7 +2407,7 @@ export const getCostByModel = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT u.model_id, u.model_name, SUM(u.input_tokens * COALESCE(mp.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(mp.output_price, 0) / 1000) as output_cost, SUM((u.input_tokens * COALESCE(mp.input_price, 0) + u.output_tokens * COALESCE(mp.output_price, 0)) / 1000) as total_cost FROM usage_logs u INNER JOIN model_providers mp ON u.model_id = mp.model_id AND u.provider_id = mp.provider_id ${whereClause} GROUP BY u.model_id, u.model_name`
+    `SELECT u.model_name as model_id, u.model_name, SUM(u.input_tokens * COALESCE(mp.input_price, 0) / 1000) as input_cost, SUM(u.output_tokens * COALESCE(mp.output_price, 0) / 1000) as output_cost, SUM((u.input_tokens * COALESCE(mp.input_price, 0) + u.output_tokens * COALESCE(mp.output_price, 0)) / 1000) as total_cost FROM usage_logs u INNER JOIN model_providers mp ON u.model_id = mp.model_id AND u.provider_id = mp.provider_id ${whereClause} GROUP BY u.model_name`
   ).bind(...params).all();
   return result.results;
 };
@@ -2357,7 +2463,48 @@ export const getModelStats = async (db: D1Database, options: {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db.prepare(
-    `SELECT model_id, model_name, COUNT(*) as requests, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause} GROUP BY model_id, model_name ORDER BY total_tokens DESC`
+    `SELECT model_name as model_id, model_name, COUNT(*) as requests, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause} GROUP BY model_name ORDER BY total_tokens DESC`
+  ).bind(...params).all();
+  return result.results;
+};
+export const getProviderModelStats = async (db: D1Database, options: {
+  company_id?: string;
+  start_at?: number;
+  end_at?: number;
+}): Promise<any[]> => {
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (options.company_id) {
+    conditions.push(`u.company_id = ?${paramIndex++}`);
+    params.push(options.company_id);
+  }
+  if (options.start_at) {
+    conditions.push(`u.created_at >= ?${paramIndex++}`);
+    params.push(options.start_at);
+  }
+  if (options.end_at) {
+    conditions.push(`u.created_at <= ?${paramIndex++}`);
+    params.push(options.end_at);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await db.prepare(
+    `SELECT
+      u.provider_id,
+      p.name as provider_name,
+      u.model_name as model_id,
+      u.model_name,
+      COUNT(*) as requests,
+      SUM(u.input_tokens) as input_tokens,
+      SUM(u.output_tokens) as output_tokens,
+      SUM(u.total_tokens) as total_tokens
+    FROM usage_logs u
+    INNER JOIN providers p ON u.provider_id = p.id
+    ${whereClause}
+    GROUP BY u.provider_id, p.name, u.model_name
+    ORDER BY total_tokens DESC`
   ).bind(...params).all();
   return result.results;
 };
@@ -2385,6 +2532,10 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
   health_status: string;
   provider_name: string;
   provider_base_url: string;
+  /** Internal model ID (first active model for this provider) */
+  health_check_model_id: string;
+  /** Upstream model name (first active model for this provider) */
+  health_check_model_name: string;
 }>> => {
   const result = await db.prepare(`
     SELECT
@@ -2397,7 +2548,23 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
       pc.weight,
       pc.health_status,
       p.name as provider_name,
-      p.base_url as provider_base_url
+      p.base_url as provider_base_url,
+      (
+        SELECT m.id
+        FROM model_providers mp
+        INNER JOIN models m ON mp.model_id = m.id
+        WHERE mp.provider_id = p.id AND mp.is_active = 1 AND m.is_active = 1
+        ORDER BY m.created_at ASC
+        LIMIT 1
+      ) as health_check_model_id,
+      (
+        SELECT m.model_id
+        FROM model_providers mp
+        INNER JOIN models m ON mp.model_id = m.id
+        WHERE mp.provider_id = p.id AND mp.is_active = 1 AND m.is_active = 1
+        ORDER BY m.created_at ASC
+        LIMIT 1
+      ) as health_check_model_name
     FROM provider_credentials pc
     INNER JOIN providers p ON pc.provider_id = p.id
     WHERE pc.is_active = 1 AND p.is_active = 1

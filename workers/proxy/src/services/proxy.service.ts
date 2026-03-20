@@ -169,12 +169,13 @@ export class ProxyService {
       apiKey.id
     );
 
-    // Build upstream request
+    // Build upstream request and get actual upstream model name
+    const upstreamModel = model.alias ?? request.model;
     const upstreamRequest = this.buildUpstreamRequest(
       request,
       credential,
       requestId,
-      model
+      upstreamModel
     );
 
     // Execute request
@@ -198,7 +199,7 @@ export class ProxyService {
       actualTokens
     );
 
-    // Record usage
+    // Record usage - use actual upstream model name for cost calculation
     await this.usageService.recordUsage({
       apiKeyId: apiKey.id,
       userId: user.id,
@@ -206,7 +207,7 @@ export class ProxyService {
       departmentId: department?.id ?? null,
       providerId: credential.providerId,
       modelId: model.id,
-      modelName: model.model_id,
+      modelName: upstreamModel,  // 使用实际发送给上游的 model 名称
       endpoint: "/v1/messages",
       inputTokens: usage.input_tokens,
       outputTokens: usage.output_tokens,
@@ -272,7 +273,7 @@ export class ProxyService {
    * @param request - Original request data
    * @param credential - Selected provider credential
    * @param requestId - Request ID for tracing
-   * @param model - Model entity with optional alias
+   * @param upstreamModel - Actual model name to send to upstream
    * @returns Fetch request init
    */
   private buildUpstreamRequest(
@@ -282,7 +283,7 @@ export class ProxyService {
       apiVersion: string | null;
     },
     requestId: string,
-    model: { alias: string | null }
+    upstreamModel: string
   ): RequestInit {
     const headers: HeadersInit = {
       "Content-Type": "application/json",
@@ -291,10 +292,7 @@ export class ProxyService {
       "x-request-id": requestId,
     };
 
-    // Use alias as upstream model name, fallback to original model_id
-    const upstreamModel = model.alias ?? request.model;
-
-    // Build request body
+    // Build request body with actual upstream model name
     const body = JSON.stringify({
       model: upstreamModel,
       messages: request.messages,

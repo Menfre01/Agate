@@ -173,6 +173,42 @@ export async function getModelStats(
 }
 
 /**
+ * Handles GET /admin/stats/provider-models - Provider-Model usage statistics.
+ */
+export async function getProviderModelStats(
+  _request: Request,
+  env: Env,
+  context: RequestContext
+): Promise<Response> {
+  const url = new URL(_request.url);
+  const usageService = new UsageService(env);
+
+  const now = Date.now();
+  const startAt = url.searchParams.get("start_at")
+    ? parseInt(url.searchParams.get("start_at")!, 10)
+    : now - 86400000 * 7; // Default: last 7 days
+
+  const endAt = url.searchParams.get("end_at")
+    ? parseInt(url.searchParams.get("end_at")!, 10)
+    : now;
+
+  const stats = await usageService.getProviderModelStats({
+    start_at: startAt,
+    end_at: endAt,
+    company_id: url.searchParams.get("company_id") ?? undefined,
+  });
+
+  return withResponseLogging(
+    Response.json({
+      start_at: startAt,
+      end_at: endAt,
+      stats,
+    }),
+    context
+  );
+}
+
+/**
  * Handles GET /admin/logs - Query usage logs.
  */
 export async function getLogs(
@@ -189,7 +225,7 @@ export async function getLogs(
     end_at: url.searchParams.get("end_at")
       ? parseInt(url.searchParams.get("end_at")!, 10)
       : undefined,
-    user_id: url.searchParams.get("user_id") ?? undefined,
+    search: url.searchParams.get("search") ?? undefined,
     company_id: url.searchParams.get("company_id") ?? undefined,
     department_id: url.searchParams.get("department_id") ?? undefined,
     model_id: url.searchParams.get("model_id") ?? undefined,
@@ -238,6 +274,10 @@ export function statsRouteHandler(
 
     if (pathname === "/admin/stats/models" && request.method === "GET") {
       return getModelStats(request, env, context);
+    }
+
+    if (pathname === "/admin/stats/provider-models" && request.method === "GET") {
+      return getProviderModelStats(request, env, context);
     }
 
     return Promise.resolve(

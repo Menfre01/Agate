@@ -29,13 +29,29 @@ export async function listDepartments(
 ): Promise<Response> {
   const url = new URL(request.url);
   const companyId = url.searchParams.get("company_id");
+  const pageStr = url.searchParams.get("page");
+  const pageSizeStr = url.searchParams.get("page_size");
 
-  const departments = companyId
+  const page = pageStr ? parseInt(pageStr, 10) : 1;
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
+
+  const allDepartments = companyId
     ? await queries.listDepartmentsByCompany(env.DB, companyId)
     : await queries.listAllDepartments(env.DB);
 
+  const total = allDepartments.length;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const departments = allDepartments.slice(start, end);
+
   return withResponseLogging(
-    Response.json({ departments }),
+    Response.json({
+      departments,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: Math.ceil(total / pageSize),
+    }),
     context
   );
 }

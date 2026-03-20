@@ -217,6 +217,10 @@ export class HealthCheckService {
       base_url: string | null;
       provider_name: string;
       provider_base_url: string;
+      /** Internal model ID for health check */
+      health_check_model_id: string;
+      /** Upstream model name for health check */
+      health_check_model_name: string;
     },
     systemApiKey: string
   ): Promise<HealthCheckResult> {
@@ -238,9 +242,9 @@ export class HealthCheckService {
       // Resolve base URL: credential level takes precedence
       const baseUrl = credential.base_url ?? credential.provider_base_url;
 
-      // Build minimal request
+      // Build minimal request - use provider's health check model
       const requestBody: HealthCheckRequest = {
-        model: this.healthCheckModel,
+        model: credential.health_check_model_name,
         max_tokens: this.maxTokens,
         messages: [{ role: "user", content: "." }],
       };
@@ -270,13 +274,15 @@ export class HealthCheckService {
         result.inputTokens = data.usage?.input_tokens ?? 0;
         result.outputTokens = data.usage?.output_tokens ?? 0;
 
-        // Record usage log
+        // Record usage log with actual model used
         await this.recordUsage(systemApiKey, {
           providerId: credential.provider_id,
           status: "success",
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
           responseTimeMs: result.responseTimeMs,
+          modelId: credential.health_check_model_id,
+          modelName: credential.health_check_model_name,
         });
       } else {
         result.error = `HTTP ${response.status}: ${response.statusText}`;
@@ -287,6 +293,8 @@ export class HealthCheckService {
           outputTokens: 0,
           responseTimeMs: result.responseTimeMs,
           errorCode: String(response.status),
+          modelId: credential.health_check_model_id,
+          modelName: credential.health_check_model_name,
         });
       }
     } catch (error) {
@@ -300,6 +308,8 @@ export class HealthCheckService {
         outputTokens: 0,
         responseTimeMs: result.responseTimeMs,
         errorCode: "NETWORK_ERROR",
+        modelId: credential.health_check_model_id,
+        modelName: credential.health_check_model_name,
       });
     }
 
@@ -369,6 +379,8 @@ export class HealthCheckService {
       outputTokens: number;
       responseTimeMs: number;
       errorCode?: string;
+      modelName: string;
+      modelId: string;
     }
   ): Promise<void> {
     const log: UsageLog = {
@@ -378,8 +390,8 @@ export class HealthCheckService {
       company_id: this.systemCompanyId,
       department_id: null,
       provider_id: params.providerId,
-      model_id: "claude-3-haiku",
-      model_name: this.healthCheckModel,
+      model_id: params.modelId,
+      model_name: params.modelName,
       endpoint: "/v1/messages",
       input_tokens: params.inputTokens,
       output_tokens: params.outputTokens,

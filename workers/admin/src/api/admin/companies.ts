@@ -24,14 +24,32 @@ import { withResponseLogging, logError } from "@agate/shared/middleware/logger.j
  * Handles GET /admin/companies - List all companies.
  */
 export async function listCompanies(
-  _request: Request,
+  request: Request,
   env: Env,
   context: RequestContext
 ): Promise<Response> {
-  const companies = await queries.listCompanies(env.DB);
+  const url = new URL(request.url);
+  const pageStr = url.searchParams.get("page");
+  const pageSizeStr = url.searchParams.get("page_size");
+
+  const page = pageStr ? parseInt(pageStr, 10) : 1;
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
+
+  const allCompanies = await queries.listCompanies(env.DB);
+
+  const total = allCompanies.length;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const companies = allCompanies.slice(start, end);
 
   return withResponseLogging(
-    Response.json({ companies }),
+    Response.json({
+      companies,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: Math.ceil(total / pageSize),
+    }),
     context
   );
 }
