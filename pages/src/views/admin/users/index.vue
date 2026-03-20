@@ -3,7 +3,7 @@
     <n-card title="用户管理">
       <template #header-extra>
         <n-space>
-          <n-button type="primary" @click="showCreateModal = true">
+          <n-button type="primary" @click="openCreateModal">
             新建用户
           </n-button>
         </n-space>
@@ -17,6 +17,7 @@
             placeholder="搜索用户名或邮箱"
             clearable
             style="width: 200px;"
+            @keyup.enter="handleSearch"
           />
           <n-select
             v-model:value="roleFilter"
@@ -32,7 +33,7 @@
             clearable
             style="width: 120px;"
           />
-          <n-button @click="loadUsers">搜索</n-button>
+          <n-button @click="handleSearch">搜索</n-button>
         </n-space>
       </n-space>
 
@@ -41,17 +42,29 @@
         :columns="columns"
         :data="users"
         :loading="loading"
-        :pagination="pagination"
         :bordered="false"
-        @update:page="handlePageChange"
+        :pagination="false"
       />
+
+      <!-- 分页 -->
+      <n-space justify="end" style="margin-top: 16px;">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalItems"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-space>
     </n-card>
 
-    <!-- 创建用户弹窗 -->
-    <n-modal v-model:show="showCreateModal" preset="dialog" title="新建用户">
+    <!-- 创建/编辑用户弹窗 -->
+    <n-modal v-model:show="showCreateModal" preset="dialog" :title="isEdit ? '编辑用户' : '新建用户'">
       <n-form ref="formRef" :model="formData" :rules="rules" label-placement="left" :label-width="80">
         <n-form-item label="邮箱" path="email">
-          <n-input v-model:value="formData.email" placeholder="user@example.com" />
+          <n-input v-model:value="formData.email" placeholder="user@example.com" :disabled="isEdit" />
         </n-form-item>
         <n-form-item label="姓名" path="name">
           <n-input v-model:value="formData.name" placeholder="用户姓名" />
@@ -85,8 +98,8 @@
       </n-form>
       <template #action>
         <n-space>
-          <n-button @click="showCreateModal = false">取消</n-button>
-          <n-button type="primary" :loading="submitting" @click="handleCreate">确定</n-button>
+          <n-button @click="closeModal">取消</n-button>
+          <n-button type="primary" :loading="submitting" @click="handleSubmit">确定</n-button>
         </n-space>
       </template>
     </n-modal>
@@ -94,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, h, onMounted } from 'vue'
+import { ref, reactive, h, onMounted, watch } from 'vue'
 import {
   NCard,
   NSpace,
@@ -102,6 +115,7 @@ import {
   NInput,
   NSelect,
   NDataTable,
+  NPagination,
   NModal,
   NForm,
   NFormItem,
@@ -125,15 +139,16 @@ const dialog = useDialog()
 
 const loading = ref(false)
 const users = ref<any[]>([])
+
+// 分页状态 - 使用 ref 而非 reactive
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalItems = ref(0)
+
+// 搜索筛选
 const searchText = ref('')
 const roleFilter = ref<'admin' | 'user' | null>(null)
 const statusFilter = ref<'true' | 'false' | null>(null)
-
-const pagination = reactive({
-  page: 1,
-  pageSize: 20,
-  itemCount: 0,
-})
 
 const roleOptions = [
   { label: '管理员', value: 'admin' },
@@ -174,7 +189,7 @@ const columns: DataTableColumns<any> = [
     width: 100,
     render: (row) =>
       h(NSwitch, {
-        value: row.is_active,
+        defaultValue: Boolean(row.is_active),
         disabled: row.role === 'admin' || row.is_system,
         onUpdateValue: () => handleToggleStatus(row),
       }),
@@ -189,26 +204,29 @@ const columns: DataTableColumns<any> = [
   {
     title: '操作',
     key: 'actions',
-    width: 100,
+    width: 150,
     fixed: 'right' as const,
     render: (row) => {
       if (row.is_system || row.role === 'admin') return null
-      return h(
-        NPopconfirm,
-        {
-          onPositiveClick: () => handleDelete(row),
-        },
-        {
-          trigger: () => h(NButton, { size: 'small', type: 'error' }, () => '删除'),
-          default: () => '确定删除此用户？',
-        }
-      )
+      return h(NSpace, {}, () => [
+        h(NButton, { size: 'small', onClick: () => openEditModal(row) }, () => '编辑'),
+        h(
+          NPopconfirm,
+          { onPositiveClick: () => handleDelete(row) },
+          {
+            trigger: () => h(NButton, { size: 'small', type: 'error' }, () => '删除'),
+            default: () => '确定删除此用户？',
+          }
+        ),
+      ])
     },
   },
 ]
 
-// 创建用户相关
+// 创建/编辑用户相关
 const showCreateModal = ref(false)
+const isEdit = ref(false)
+const editId = ref('')
 const submitting = ref(false)
 const formRef = ref<FormInst | null>(null)
 const formData = reactive({
@@ -234,16 +252,35 @@ async function loadUsers() {
   loading.value = true
   try {
     const result = await getUsers({
-      page: pagination.page,
-      page_size: pagination.pageSize,
+      page: currentPage.value,
+      page_size: pageSize.value,
+      search: searchText.value || undefined,
+      role: roleFilter.value || undefined,
+      is_active: statusFilter.value || undefined,
     })
     users.value = result.users
-    pagination.itemCount = result.total
+    totalItems.value = result.total
   } catch (error) {
     console.error('Failed to load users:', error)
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadUsers()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadUsers()
+}
+
+function handleSearch() {
+  currentPage.value = 1
+  loadUsers()
 }
 
 async function loadCompanies() {
@@ -268,46 +305,87 @@ async function loadDepartments() {
   }
 }
 
-function handlePageChange(page: number) {
-  pagination.page = page
-  loadUsers()
-}
+// 监听公司变化，自动加载部门列表
+watch(() => formData.company_id, () => {
+  formData.department_id = ''
+  loadDepartments()
+})
 
 async function handleToggleStatus(row: any) {
   if (row.role === 'admin') return
+  const currentStatus = Boolean(row.is_active)
   try {
-    await updateUser(row.id, { is_active: !row.is_active })
-    message.success(row.is_active ? '用户已禁用' : '用户已启用')
+    await updateUser(row.id, { is_active: !currentStatus })
+    message.success(currentStatus ? '用户已禁用' : '用户已启用')
     loadUsers()
   } catch (error: any) {
     message.error(error.message || '操作失败')
   }
 }
 
-async function handleCreate() {
+function openCreateModal() {
+  isEdit.value = false
+  formData.email = ''
+  formData.name = ''
+  formData.role = 'user'
+  formData.company_id = ''
+  formData.department_id = ''
+  formData.quota_daily = 100000
+  showCreateModal.value = true
+}
+
+function openEditModal(row: any) {
+  isEdit.value = true
+  editId.value = row.id
+  formData.email = row.email
+  formData.name = row.name || ''
+  formData.role = row.role
+  formData.company_id = row.company_id
+  formData.department_id = row.department_id || ''
+  formData.quota_daily = row.quota_daily
+  showCreateModal.value = true
+}
+
+function closeModal() {
+  showCreateModal.value = false
+  formData.email = ''
+  formData.name = ''
+  formData.role = 'user'
+  formData.company_id = ''
+  formData.department_id = ''
+  formData.quota_daily = 100000
+}
+
+async function handleSubmit() {
   try {
     await formRef.value?.validate()
     submitting.value = true
-    await createUser({
-      email: formData.email,
-      name: formData.name,
-      role: formData.role,
-      company_id: formData.company_id,
-      department_id: formData.department_id || undefined,
-      quota_daily: formData.quota_daily,
-    })
-    message.success('用户创建成功')
-    showCreateModal.value = false
-    // 重置表单
-    formData.email = ''
-    formData.name = ''
-    formData.role = 'user'
-    formData.company_id = ''
-    formData.department_id = ''
-    formData.quota_daily = 100000
+
+    if (isEdit.value) {
+      await updateUser(editId.value, {
+        name: formData.name,
+        role: formData.role,
+        company_id: formData.company_id,
+        department_id: formData.department_id || undefined,
+        quota_daily: formData.quota_daily,
+      })
+      message.success('用户更新成功')
+    } else {
+      await createUser({
+        email: formData.email,
+        name: formData.name,
+        role: formData.role,
+        company_id: formData.company_id,
+        department_id: formData.department_id || undefined,
+        quota_daily: formData.quota_daily,
+      })
+      message.success('用户创建成功')
+    }
+
+    closeModal()
     await loadUsers()
   } catch (error: any) {
-    message.error(error.message || '创建用户失败')
+    message.error(error.message || '操作失败')
   } finally {
     submitting.value = false
   }
@@ -317,6 +395,10 @@ async function handleDelete(row: any) {
   try {
     await deleteUser(row.id)
     message.success('用户已删除')
+    // 如果当前页只有一条数据且不是第一页，则跳转到上一页
+    if (users.value.length === 1 && currentPage.value > 1) {
+      currentPage.value--
+    }
     await loadUsers()
   } catch (error: any) {
     message.error(error.message || '删除失败')

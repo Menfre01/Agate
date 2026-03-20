@@ -25,6 +25,7 @@ import type {
   TokenUsageResponse,
   CostAnalysisResponse,
   ModelStatsResponse,
+  ProviderModelStatsResponse,
   UsageLogsResponse,
   UsageLogsQuery,
   QuotaInfo,
@@ -42,7 +43,8 @@ export interface UserListQuery {
   company_id?: string
   department_id?: string
   role?: 'admin' | 'user'
-  is_active?: boolean
+  is_active?: string | boolean
+  search?: string
 }
 
 export interface UserListResponse {
@@ -57,7 +59,7 @@ export async function getUsers(query?: UserListQuery): Promise<UserListResponse>
   const params = new URLSearchParams()
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
-      if (value !== undefined) {
+      if (value !== undefined && value !== null) {
         params.append(key, String(value))
       }
     })
@@ -195,7 +197,7 @@ export interface KeyListQuery {
   user_id?: string
   company_id?: string
   department_id?: string
-  is_active?: boolean
+  is_active?: string | boolean
 }
 
 export interface KeyListResponse {
@@ -234,6 +236,10 @@ export async function enableKey(id: string): Promise<{ success: boolean }> {
   return adminApi.post(`/admin/keys/${id}/enable`)
 }
 
+export async function deleteKey(id: string): Promise<{ success: boolean }> {
+  return adminApi.delete(`/admin/keys/${id}`)
+}
+
 export async function addBonusQuota(id: string, data: AddBonusQuotaDto): Promise<ApiKeyResponse> {
   return adminApi.post(`/admin/keys/${id}/bonus`, data)
 }
@@ -242,13 +248,29 @@ export async function addBonusQuota(id: string, data: AddBonusQuotaDto): Promise
 // Providers API
 // =============================================================================
 
+export interface ProviderListQuery {
+  page?: number
+  page_size?: number
+}
+
 export interface ProviderListResponse {
   total: number
+  page: number
+  page_size: number
+  total_pages: number
   providers: ProviderResponse[]
 }
 
-export async function getProviders(): Promise<ProviderListResponse> {
-  return adminApi.get('/admin/providers')
+export async function getProviders(query?: ProviderListQuery): Promise<ProviderListResponse> {
+  const params = new URLSearchParams()
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined) {
+        params.append(key, String(value))
+      }
+    })
+  }
+  return adminApi.get(`/admin/providers?${params.toString()}`)
 }
 
 export async function createProvider(data: CreateProviderDto): Promise<ProviderResponse> {
@@ -283,13 +305,29 @@ export async function deleteCredential(providerId: string, credentialId: string)
 // Models API
 // =============================================================================
 
+export interface ModelListQuery {
+  page?: number
+  page_size?: number
+}
+
 export interface ModelListResponse {
   total: number
+  page: number
+  page_size: number
+  total_pages: number
   models: ModelResponse[]
 }
 
-export async function getModels(): Promise<ModelListResponse> {
-  return adminApi.get('/admin/models')
+export async function getModels(query?: ModelListQuery): Promise<ModelListResponse> {
+  const params = new URLSearchParams()
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined) {
+        params.append(key, String(value))
+      }
+    })
+  }
+  return adminApi.get(`/admin/models?${params.toString()}`)
 }
 
 export async function createModel(data: CreateModelDto): Promise<ModelResponse> {
@@ -381,6 +419,22 @@ export async function getModelStats(query?: {
     })
   }
   return adminApi.get(`/admin/stats/models?${params.toString()}`)
+}
+
+export async function getProviderModelStats(query?: {
+  start_at?: number
+  end_at?: number
+  company_id?: string
+}): Promise<{ stats: ProviderModelStatsResponse[] }> {
+  const params = new URLSearchParams()
+  if (query) {
+    Object.entries(query).forEach(([key, value]) => {
+      if (value !== undefined) {
+        params.append(key, String(value))
+      }
+    })
+  }
+  return adminApi.get(`/admin/stats/provider-models?${params.toString()}`)
 }
 
 export async function getLogs(query: UsageLogsQuery): Promise<UsageLogsResponse> {

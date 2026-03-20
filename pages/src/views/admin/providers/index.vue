@@ -9,8 +9,20 @@
         :columns="columns"
         :data="providers"
         :loading="loading"
+        :pagination="false"
         :bordered="false"
       />
+      <n-space justify="end" style="margin-top: 16px;">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalItems"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-space>
     </n-card>
 
     <!-- 创建/编辑提供商弹窗 -->
@@ -106,6 +118,7 @@ import {
   NCard,
   NButton,
   NDataTable,
+  NPagination,
   NModal,
   NForm,
   NFormItem,
@@ -134,6 +147,11 @@ import { useMessage } from 'naive-ui'
 const message = useMessage()
 const loading = ref(false)
 const providers = ref<any[]>([])
+
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalItems = ref(0)
 
 const showModal = ref(false)
 const isEdit = ref(false)
@@ -211,13 +229,28 @@ const columns: DataTableColumns<any> = [
 async function loadProviders() {
   loading.value = true
   try {
-    const result = await getProviders()
+    const result = await getProviders({
+      page: currentPage.value,
+      page_size: pageSize.value,
+    })
     providers.value = result.providers
+    totalItems.value = result.total
   } catch (error: any) {
     message.error(error.message || '加载提供商列表失败')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadProviders()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadProviders()
 }
 
 function openCreateModal() {
@@ -282,6 +315,9 @@ async function handleDelete(row: any) {
   try {
     await deleteProvider(row.id)
     message.success('提供商已删除')
+    if (providers.value.length === 1 && currentPage.value > 1) {
+      currentPage.value--
+    }
     await loadProviders()
   } catch (error: any) {
     message.error(error.message || '删除失败')

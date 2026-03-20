@@ -8,9 +8,20 @@
         :columns="columns"
         :data="companies"
         :loading="loading"
-        :pagination="pagination"
+        :pagination="false"
         :bordered="false"
       />
+      <n-space justify="end" style="margin-top: 16px;">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalItems"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-space>
     </n-card>
 
     <!-- 创建/编辑公司弹窗 -->
@@ -37,11 +48,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, h, computed } from 'vue'
+import { ref, reactive, onMounted, h } from 'vue'
 import {
   NCard,
   NButton,
   NDataTable,
+  NPagination,
   NModal,
   NForm,
   NFormItem,
@@ -59,7 +71,11 @@ import { useMessage } from 'naive-ui'
 const message = useMessage()
 const loading = ref(false)
 const companies = ref<any[]>([])
-const pagination = reactive({ page: 1, pageSize: 20, itemCount: 0 })
+
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalItems = ref(0)
 
 const showCreateModal = ref(false)
 const isEdit = ref(false)
@@ -117,14 +133,25 @@ const columns: DataTableColumns<any> = [
 async function loadCompanies() {
   loading.value = true
   try {
-    const result = await getCompanies({ page: pagination.page, page_size: pagination.pageSize })
+    const result = await getCompanies({ page: currentPage.value, page_size: pageSize.value })
     companies.value = result.companies
-    pagination.itemCount = result.total
+    totalItems.value = result.total
   } catch (error: any) {
     message.error(error.message || '加载公司列表失败')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadCompanies()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadCompanies()
 }
 
 function openCreateModal() {
@@ -185,6 +212,9 @@ async function handleDelete(row: any) {
   try {
     await deleteCompany(row.id)
     message.success('公司已删除')
+    if (companies.value.length === 1 && currentPage.value > 1) {
+      currentPage.value--
+    }
     await loadCompanies()
   } catch (error: any) {
     message.error(error.message || '删除失败')

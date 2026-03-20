@@ -7,9 +7,21 @@
 
       <n-space vertical style="margin-bottom: 16px;">
         <n-space>
-          <n-input v-model:value="searchText" placeholder="搜索 Key 或用户" clearable style="width: 200px;" />
-          <n-select v-model:value="statusFilter" :options="statusOptions" placeholder="选择状态" clearable style="width: 120px;" />
-          <n-button @click="loadKeys">搜索</n-button>
+          <n-input
+            v-model:value="searchText"
+            placeholder="搜索 Key 或用户"
+            clearable
+            style="width: 200px;"
+            @keyup.enter="handleSearch"
+          />
+          <n-select
+            v-model:value="statusFilter"
+            :options="statusOptions"
+            placeholder="选择状态"
+            clearable
+            style="width: 120px;"
+          />
+          <n-button @click="handleSearch">搜索</n-button>
         </n-space>
       </n-space>
 
@@ -17,9 +29,20 @@
         :columns="columns"
         :data="keys"
         :loading="loading"
-        :pagination="pagination"
+        :pagination="false"
         :bordered="false"
       />
+      <n-space justify="end" style="margin-top: 16px;">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalItems"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-space>
     </n-card>
 
     <!-- 创建 API Key 弹窗 -->
@@ -78,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, h } from 'vue'
 import {
   NCard,
   NSpace,
@@ -86,6 +109,7 @@ import {
   NInput,
   NSelect,
   NDataTable,
+  NPagination,
   NModal,
   NForm,
   NFormItem,
@@ -97,7 +121,7 @@ import {
   type FormInst,
   type FormRules,
 } from 'naive-ui'
-import { getKeys, createKey, enableKey, disableKey, addBonusQuota } from '@/shared/api/admin'
+import { getKeys, createKey, enableKey, disableKey, deleteKey, addBonusQuota } from '@/shared/api/admin'
 import { getUsers } from '@/shared/api/admin'
 import { useMessage } from 'naive-ui'
 
@@ -107,7 +131,11 @@ const loading = ref(false)
 const keys = ref<any[]>([])
 const searchText = ref('')
 const statusFilter = ref<'true' | 'false' | null>(null)
-const pagination = reactive({ page: 1, pageSize: 20, itemCount: 0 })
+
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalItems = ref(0)
 
 const statusOptions = [
   { label: '启用', value: 'true' as const },
@@ -141,18 +169,20 @@ const columns: DataTableColumns<any> = [
   {
     title: '操作',
     key: 'actions',
-    width: 150,
+    width: 200,
     render: (row) => h(NSpace, {}, () => [
       h(NButton, { size: 'small', onClick: () => handleAddBonus(row) }, () => '奖励配额'),
       h(NPopconfirm, { onPositiveClick: () => handleDisable(row) }, {
         trigger: () => h(NButton, { size: 'small', type: row.is_active ? 'warning' : 'success' }, () => row.is_active ? '禁用' : '启用'),
         default: () => `确定${row.is_active ? '禁用' : '启用'}此 Key?`,
       }),
+      h(NPopconfirm, { onPositiveClick: () => handleDelete(row) }, {
+        trigger: () => h(NButton, { size: 'small', type: 'error' }, () => '删除'),
+        default: () => '确定删除此 API Key？删除后无法恢复！',
+      }),
     ]),
   },
 ]
-
-import { h } from 'vue'
 
 const showCreateModal = ref(false)
 const showKeyResult = ref(false)
@@ -189,14 +219,35 @@ const bonusRules: FormRules = {
 async function loadKeys() {
   loading.value = true
   try {
-    const result = await getKeys({ page: pagination.page, page_size: pagination.pageSize })
+    const result = await getKeys({
+      page: currentPage.value,
+      page_size: pageSize.value,
+      search: searchText.value || undefined,
+      is_active: statusFilter.value || undefined,
+    })
     keys.value = result.keys
-    pagination.itemCount = result.total
+    totalItems.value = result.total
   } catch (error) {
     console.error('Failed to load keys:', error)
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadKeys()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadKeys()
+}
+
+function handleSearch() {
+  currentPage.value = 1
+  loadKeys()
 }
 
 async function loadUsers() {
@@ -243,7 +294,6 @@ async function handleBonusSubmit() {
   try {
     await bonusFormRef.value?.validate()
     bonusSubmitting.value = true
-    // 计算过期时间戳
     const expiresAt = Date.now() + bonusData.expires_in_days * 86400000
     await addBonusQuota(currentKeyId.value, {
       amount: bonusData.amount,
@@ -271,6 +321,19 @@ async function handleDisable(row: any) {
     await loadKeys()
   } catch (error: any) {
     message.error(error.message || '操作失败')
+  }
+}
+
+async function handleDelete(row: any) {
+  try {
+    await deleteKey(row.id)
+    message.success('API Key 已删除')
+    if (keys.value.length === 1 && currentPage.value > 1) {
+      currentPage.value--
+    }
+    await loadKeys()
+  } catch (error: any) {
+    message.error(error.message || '删除失败')
   }
 }
 

@@ -24,14 +24,35 @@ import { withResponseLogging, logError } from "@agate/shared/middleware/logger.j
  * Handles GET /admin/models - List all models.
  */
 export async function listModels(
-  _request: Request,
+  request: Request,
   env: Env,
   context: RequestContext
 ): Promise<Response> {
-  const modelService = new ModelService(env);
-  const models = await modelService.listModels();
+  const url = new URL(request.url);
+  const pageStr = url.searchParams.get("page");
+  const pageSizeStr = url.searchParams.get("page_size");
 
-  return withResponseLogging(Response.json({ models }), context);
+  const page = pageStr ? parseInt(pageStr, 10) : 1;
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
+
+  const modelService = new ModelService(env);
+  const allModels = await modelService.listModels();
+
+  const total = allModels.length;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const models = allModels.slice(start, end);
+
+  return withResponseLogging(
+    Response.json({
+      models,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: Math.ceil(total / pageSize),
+    }),
+    context
+  );
 }
 
 /**

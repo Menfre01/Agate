@@ -18,9 +18,20 @@
         :columns="columns"
         :data="departments"
         :loading="loading"
-        :pagination="pagination"
+        :pagination="false"
         :bordered="false"
       />
+      <n-space justify="end" style="margin-top: 16px;">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalItems"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-space>
     </n-card>
 
     <!-- 创建/编辑部门弹窗 -->
@@ -63,6 +74,7 @@ import {
   NButton,
   NSelect,
   NDataTable,
+  NPagination,
   NModal,
   NForm,
   NFormItem,
@@ -81,7 +93,11 @@ const loading = ref(false)
 const departments = ref<any[]>([])
 const selectedCompany = ref<string>('')
 const companyOptions = ref<{ label: string; value: string }[]>([])
-const pagination = reactive({ page: 1, pageSize: 20, itemCount: 0 })
+
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalItems = ref(0)
 
 const showModal = ref(false)
 const isEdit = ref(false)
@@ -142,12 +158,12 @@ async function loadDepartments() {
   loading.value = true
   try {
     const result = await getDepartments({
-      page: pagination.page,
-      page_size: pagination.pageSize,
+      page: currentPage.value,
+      page_size: pageSize.value,
       company_id: selectedCompany.value || undefined,
     })
     departments.value = result.departments
-    pagination.itemCount = result.total
+    totalItems.value = result.total
   } catch (error: any) {
     message.error(error.message || '加载部门列表失败')
   } finally {
@@ -164,8 +180,19 @@ async function loadCompanies() {
   }
 }
 
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadDepartments()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadDepartments()
+}
+
 function handleCompanyChange() {
-  pagination.page = 1
+  currentPage.value = 1
   loadDepartments()
 }
 
@@ -230,6 +257,9 @@ async function handleDelete(row: any) {
   try {
     await deleteDepartment(row.id)
     message.success('部门已删除')
+    if (departments.value.length === 1 && currentPage.value > 1) {
+      currentPage.value--
+    }
     await loadDepartments()
   } catch (error: any) {
     message.error(error.message || '删除失败')

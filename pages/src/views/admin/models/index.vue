@@ -4,14 +4,24 @@
       <template #header-extra>
         <n-button type="primary" @click="openCreateModal">新建模型</n-button>
       </template>
-
       <n-data-table
         :columns="columns"
         :data="models"
         :loading="loading"
-        :pagination="pagination"
+        :pagination="false"
         :bordered="false"
       />
+      <n-space justify="end" style="margin-top: 16px;">
+        <n-pagination
+          v-model:page="currentPage"
+          v-model:page-size="pageSize"
+          :item-count="totalItems"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </n-space>
     </n-card>
 
     <!-- 创建/编辑模型弹窗 -->
@@ -51,10 +61,12 @@
               <n-tag type="info" size="small">{{ mp.provider_name }}</n-tag>
             </template>
             <n-space vertical>
-              <div>优先级: {{ mp.priority }}</div>
-              <div v-if="mp.pricing" class="pricing-detail">
-                输入: ${{ mp.pricing.input_per_million }}/M | 输出: ${{ mp.pricing.output_per_million }}/M
+              <div v-if="mp.input_price > 0 || mp.output_price > 0" class="pricing-detail">
+                输入: ${{ (mp.input_price * 1000).toFixed(4) }}/M | 输出: ${{ (mp.output_price * 1000).toFixed(4) }}/M
               </div>
+              <n-tag :type="mp.is_active ? 'success' : 'default'" size="small">
+                {{ mp.is_active ? '启用' : '禁用' }}
+              </n-tag>
             </n-space>
             <template #suffix>
               <n-popconfirm @positive-click="() => handleRemoveProvider(mp.provider_id)">
@@ -77,9 +89,6 @@
       <n-form ref="providerFormRef" :model="providerData" :rules="providerRules" label-placement="left" :label-width="100">
         <n-form-item label="提供商" path="provider_id">
           <n-select v-model:value="providerData.provider_id" :options="availableProviders" placeholder="选择提供商" />
-        </n-form-item>
-        <n-form-item label="优先级" path="priority">
-          <n-input-number v-model:value="providerData.priority" :min="0" style="width: 100%;" />
         </n-form-item>
         <n-divider />
         <n-text depth="3" style="font-size: 12px;">定价（可选）</n-text>
@@ -107,6 +116,7 @@ import {
   NCard,
   NButton,
   NDataTable,
+  NPagination,
   NModal,
   NForm,
   NFormItem,
@@ -140,12 +150,16 @@ const loading = ref(false)
 const models = ref<any[]>([])
 const allProviders = ref<any[]>([])
 
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalItems = ref(0)
+
 const showModal = ref(false)
 const isEdit = ref(false)
 const editId = ref('')
 const submitting = ref(false)
 const formRef = ref<FormInst | null>(null)
-const pagination = reactive({ page: 1, pageSize: 20, itemCount: 0 })
 
 const showProviderModal = ref(false)
 const showAddProviderModal = ref(false)
@@ -164,7 +178,6 @@ const formData = reactive({
 
 const providerData = reactive({
   provider_id: '',
-  priority: 0,
   input_per_million: 0,
   output_per_million: 0,
 })
@@ -228,14 +241,28 @@ const columns: DataTableColumns<any> = [
 async function loadModels() {
   loading.value = true
   try {
-    const result = await getModels()
+    const result = await getModels({
+      page: currentPage.value,
+      page_size: pageSize.value,
+    })
     models.value = result.models
-    pagination.itemCount = result.total
+    totalItems.value = result.total
   } catch (error: any) {
     message.error(error.message || '加载模型列表失败')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadModels()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadModels()
 }
 
 async function loadProviders() {
@@ -314,6 +341,9 @@ async function handleDelete(row: any) {
   try {
     await deleteModel(row.id)
     message.success('模型已删除')
+    if (models.value.length === 1 && currentPage.value > 1) {
+      currentPage.value--
+    }
     await loadModels()
   } catch (error: any) {
     message.error(error.message || '删除失败')
@@ -323,17 +353,17 @@ async function handleDelete(row: any) {
 function openProviderModal(row: any) {
   currentModelId.value = row.id
   modelProviders.value = row.providers?.map((p: any) => ({
-    provider_id: p.id,
-    provider_name: p.display_name || p.name,
-    priority: p.priority || 0,
-    pricing: p.pricing,
+    provider_id: p.provider_id,
+    provider_name: p.provider_name,
+    input_price: p.input_price,
+    output_price: p.output_price,
+    is_active: p.is_active,
   })) || []
   showProviderModal.value = true
 }
 
 function openAddProviderModal() {
   providerData.provider_id = ''
-  providerData.priority = 0
   providerData.input_per_million = 0
   providerData.output_per_million = 0
   showAddProviderModal.value = true
@@ -344,7 +374,6 @@ async function handleAddProvider() {
     await providerFormRef.value?.validate()
     providerSubmitting.value = true
 
-    // AddModelProviderDto 使用 input_price 和 output_price（每 1K tokens）
     const data: any = {
       provider_id: providerData.provider_id,
     }
@@ -358,15 +387,15 @@ async function handleAddProvider() {
     message.success('提供商添加成功')
     showAddProviderModal.value = false
 
-    // 刷新模型数据以更新提供商列表
     await loadModels()
     const model = models.value.find((m) => m.id === currentModelId.value)
     if (model) {
       modelProviders.value = model.providers?.map((p: any) => ({
-        provider_id: p.id,
-        provider_name: p.display_name || p.name,
-        priority: p.priority || 0,
-        pricing: p.pricing,
+        provider_id: p.provider_id,
+        provider_name: p.provider_name,
+        input_price: p.input_price,
+        output_price: p.output_price,
+        is_active: p.is_active,
       })) || []
     }
   } catch (error: any) {
@@ -381,15 +410,15 @@ async function handleRemoveProvider(providerId: string) {
     await removeModelProvider(currentModelId.value, providerId)
     message.success('提供商已移除')
 
-    // 刷新模型数据以更新提供商列表
     await loadModels()
     const model = models.value.find((m) => m.id === currentModelId.value)
     if (model) {
       modelProviders.value = model.providers?.map((p: any) => ({
-        provider_id: p.id,
-        provider_name: p.display_name || p.name,
-        priority: p.priority || 0,
-        pricing: p.pricing,
+        provider_id: p.provider_id,
+        provider_name: p.provider_name,
+        input_price: p.input_price,
+        output_price: p.output_price,
+        is_active: p.is_active,
       })) || []
     }
   } catch (error: any) {

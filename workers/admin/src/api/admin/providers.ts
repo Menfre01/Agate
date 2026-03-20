@@ -27,14 +27,35 @@ import * as queries from "@agate/shared/db/queries.js";
  * Handles GET /admin/providers - List all providers.
  */
 export async function listProviders(
-  _request: Request,
+  request: Request,
   env: Env,
   context: RequestContext
 ): Promise<Response> {
-  const providerService = new ProviderService(env);
-  const providers = await providerService.listProviders();
+  const url = new URL(request.url);
+  const pageStr = url.searchParams.get("page");
+  const pageSizeStr = url.searchParams.get("page_size");
 
-  return withResponseLogging(Response.json({ providers }), context);
+  const page = pageStr ? parseInt(pageStr, 10) : 1;
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : 20;
+
+  const providerService = new ProviderService(env);
+  const allProviders = await providerService.listProviders();
+
+  const total = allProviders.length;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const providers = allProviders.slice(start, end);
+
+  return withResponseLogging(
+    Response.json({
+      providers,
+      total,
+      page,
+      page_size: pageSize,
+      total_pages: Math.ceil(total / pageSize),
+    }),
+    context
+  );
 }
 
 /**
