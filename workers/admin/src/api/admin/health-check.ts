@@ -127,6 +127,8 @@ export async function triggerCredentialHealthCheck(
       base_url: credential.base_url,
       provider_name: provider.name,
       provider_base_url: provider.base_url,
+      health_check_model_id: "",
+      health_check_model_name: "",
     },
     systemApiKeyResult.id
   );

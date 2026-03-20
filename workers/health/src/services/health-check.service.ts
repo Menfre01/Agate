@@ -106,14 +106,12 @@ export class HealthCheckService {
   private readonly encryptionKey: string;
   private readonly systemUserId: string;
   private readonly systemCompanyId: string;
-  private readonly healthCheckModel: string;
   private readonly maxTokens: number;
   private readonly requestTimeout: number;
 
   /**
    * Health check constants.
    */
-  private static readonly DEFAULT_MODEL = "claude-3-haiku-20240307";
   private static readonly MAX_TOKENS = 1;
   private static readonly REQUEST_TIMEOUT = 10000; // 10 seconds
   private static readonly DAILY_QUOTA_WARNING_THRESHOLD = 0.8; // 80%
@@ -128,7 +126,6 @@ export class HealthCheckService {
     this.encryptionKey = env.ENCRYPTION_KEY ?? "default-key";
     this.systemUserId = env.SYSTEM_USER_ID ?? "sys-health-user";
     this.systemCompanyId = env.SYSTEM_COMPANY_ID ?? "sys-health";
-    this.healthCheckModel = env.HEALTH_CHECK_MODEL ?? HealthCheckService.DEFAULT_MODEL;
     this.maxTokens = env.HEALTH_CHECK_MAX_TOKENS ?? HealthCheckService.MAX_TOKENS;
     this.requestTimeout = env.HEALTH_CHECK_TIMEOUT ?? HealthCheckService.REQUEST_TIMEOUT;
   }

@@ -1103,9 +1103,10 @@ export enum ErrorCode {
 }
 
 /**
- * Standard API error interface
+ * Standard API error response interface
+ * Renamed from ApiError to avoid conflict with ApiError class
  */
-export interface ApiError {
+export interface ApiErrorResponse {
   /** Error code */
   code: ErrorCode;
   /** Human-readable error message */
@@ -1419,7 +1420,7 @@ export interface ErrorDetail {
 /**
  * Validation error response with field details
  */
-export interface ValidationErrorResponse extends ApiError {
+export interface ValidationErrorResponse extends ApiErrorResponse {
   /** Validation error code */
   code: ErrorCode.VALIDATION_ERROR;
   /** Array of field-specific errors */

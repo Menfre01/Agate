@@ -126,7 +126,14 @@ describe("Queries - Database Layer", () => {
 
       const result = await queries.listCompanies();
 
-      expect(mockDb.prepare).toHaveBeenCalledWith("SELECT * FROM companies ORDER BY created_at DESC");
+      expect(mockDb.prepare).toHaveBeenCalledWith(`
+        SELECT
+          c.*,
+          (SELECT COUNT(*) FROM users WHERE users.company_id = c.id AND users.is_active = TRUE) as user_count,
+          (SELECT COUNT(*) FROM departments WHERE departments.company_id = c.id) as department_count
+        FROM companies c
+        ORDER BY c.created_at DESC
+      `);
       expect(result).toEqual([mockCompany]);
     });
 

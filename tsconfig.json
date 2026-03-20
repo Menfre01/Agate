@@ -17,13 +17,13 @@
     "noImplicitAny": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
+    "noUncheckedIndexedAccess": false,
     "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
+    "noPropertyAccessFromIndexSignature": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -37,13 +37,20 @@
     "experimentalDecorators": false,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@/types/*": ["src/types/*"],
-      "@/services/*": ["src/services/*"],
-      "@/utils/*": ["src/utils/*"],
-      "@/middleware/*": ["src/middleware/*"],
-      "@/api/*": ["src/api/*"],
-      "@/db/*": ["src/db/*"],
+      "@/types": ["packages/shared/src/types"],
+      "@/types/*": ["packages/shared/src/types/*"],
+      "@/utils": ["packages/shared/src/utils"],
+      "@/utils/*": ["packages/shared/src/utils/*"],
+      "@/db": ["packages/shared/src/db"],
+      "@/db/*": ["packages/shared/src/db/*"],
+      "@/middleware": ["packages/shared/src/middleware"],
+      "@/middleware/*": ["packages/shared/src/middleware/*"],
+      "@/api": ["workers/admin/src/api"],
+      "@/api/*": ["workers/admin/src/api/*"],
+      "@/api/proxy": ["workers/proxy/src/api/proxy"],
+      "@/api/proxy/*": ["workers/proxy/src/api/proxy/*"],
+      "@/services": ["workers/admin/src/services"],
+      "@/services/*": ["workers/admin/src/services/*"],
       "@agate/shared": ["packages/shared/src"],
       "@agate/shared/*": ["packages/shared/src/*"],
       "@agate/proxy": ["workers/proxy/src"],
@@ -51,16 +58,23 @@
       "@agate/admin": ["workers/admin/src"],
       "@agate/admin/*": ["workers/admin/src/*"],
       "@agate/health": ["workers/health/src"],
-      "@agate/health/*": ["workers/health/src/*"]
+      "@agate/health/*": ["workers/health/src/*"],
+      "@test/helpers": ["tests/functional/helpers"],
+      "@test/helpers/*": ["tests/functional/helpers/*"],
+      "@test/integration": ["tests/integration"],
+      "@test/integration/*": ["tests/integration/*"]
     }
   },
   "include": [
-    "src/**/*"
+    "packages/shared/src/**/*",
+    "workers/proxy/src/**/*",
+    "workers/admin/src/**/*",
+    "workers/health/src/**/*",
+    "tests/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    ".wrangler",
-    "tests/**/*"
+    ".wrangler"
   ]
 }

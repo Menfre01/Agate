@@ -43,20 +43,20 @@ export type {
 // Note: These are for database operations, different from API DTOs in types/index.ts
 // ============================================
 
-export interface CreateCompanyDto {
+export interface InternalCreateCompanyDto {
   id: string;
   name: string;
   quota_pool?: number;
   quota_daily?: number;
 }
 
-export interface UpdateCompanyDto {
+export interface InternalUpdateCompanyDto {
   name?: string;
   quota_pool?: number;
   quota_daily?: number;
 }
 
-export interface CreateDepartmentDto {
+export interface InternalCreateDepartmentDto {
   id: string;
   company_id: string;
   name: string;
@@ -64,13 +64,13 @@ export interface CreateDepartmentDto {
   quota_daily?: number;
 }
 
-export interface UpdateDepartmentDto {
+export interface InternalUpdateDepartmentDto {
   name?: string;
   quota_pool?: number;
   quota_daily?: number;
 }
 
-export interface CreateUserDto {
+export interface InternalCreateUserDto {
   id: string;
   email: string;
   name?: string;
@@ -80,7 +80,7 @@ export interface CreateUserDto {
   quota_daily?: number;
 }
 
-export interface UpdateUserDto {
+export interface InternalUpdateUserDto {
   email?: string;
   name?: string;
   department_id?: string;
@@ -89,7 +89,7 @@ export interface UpdateUserDto {
   is_active?: boolean;
 }
 
-export interface CreateProviderDto {
+export interface InternalCreateProviderDto {
   id: string;
   name: string;
   display_name: string;
@@ -97,14 +97,14 @@ export interface CreateProviderDto {
   api_version?: string | null;
 }
 
-export interface UpdateProviderDto {
+export interface InternalUpdateProviderDto {
   display_name?: string;
   base_url?: string;
   api_version?: string;
   is_active?: boolean;
 }
 
-export interface CreateModelDto {
+export interface InternalCreateModelDto {
   id: string;
   model_id: string;
   alias?: string | null;
@@ -113,7 +113,7 @@ export interface CreateModelDto {
   max_tokens?: number;
 }
 
-export interface UpdateModelDto {
+export interface InternalUpdateModelDto {
   alias?: string | null;
   display_name?: string;
   context_window?: number;
@@ -121,7 +121,7 @@ export interface UpdateModelDto {
   is_active?: boolean;
 }
 
-export interface CreateApiKeyDto {
+export interface InternalCreateApiKeyDto {
   id: string;
   key_hash: string;
   key_prefix: string;
@@ -134,7 +134,7 @@ export interface CreateApiKeyDto {
   expires_at?: number | null;
 }
 
-export interface UpdateApiKeyDto {
+export interface InternalUpdateApiKeyDto {
   name?: string;
   quota_daily?: number;
   is_unlimited?: boolean;
@@ -143,7 +143,7 @@ export interface UpdateApiKeyDto {
   updated_at?: number;
 }
 
-export interface CreateUsageLogDto {
+export interface InternalCreateUsageLogDto {
   id: string;
   api_key_id: string;
   user_id: string;
@@ -162,7 +162,7 @@ export interface CreateUsageLogDto {
   response_time_ms?: number | null;
 }
 
-export interface QuotaChangeDto {
+export interface InternalQuotaChangeDto {
   id: string;
   entity_type: string;
   entity_id: string;
@@ -225,7 +225,7 @@ export class Queries {
    * @param data - Company creation data
    * @returns Created company object
    */
-  async createCompany(data: CreateCompanyDto): Promise<Company> {
+  async createCompany(data: InternalCreateCompanyDto): Promise<Company> {
     const now = Date.now();
     const result = await this.db
       .prepare(
@@ -261,7 +261,7 @@ export class Queries {
    * @param data - Company update data
    * @returns Updated company object
    */
-  async updateCompany(id: string, data: UpdateCompanyDto): Promise<Company> {
+  async updateCompany(id: string, data: InternalUpdateCompanyDto): Promise<Company> {
     const updates: string[] = [];
     const params: (string | number)[] = [];
     let paramIndex = 1;
@@ -397,7 +397,7 @@ export class Queries {
    * @param data - Department creation data
    * @returns Created department object
    */
-  async createDepartment(data: CreateDepartmentDto): Promise<Department> {
+  async createDepartment(data: InternalCreateDepartmentDto): Promise<Department> {
     const now = Date.now();
     const result = await this.db
       .prepare(
@@ -434,7 +434,7 @@ export class Queries {
    * @param data - Department update data
    * @returns Updated department object
    */
-  async updateDepartment(id: string, data: UpdateDepartmentDto): Promise<Department> {
+  async updateDepartment(id: string, data: InternalUpdateDepartmentDto): Promise<Department> {
     const updates: string[] = [];
     const params: (string | number)[] = [];
     let paramIndex = 1;
@@ -587,7 +587,7 @@ export class Queries {
    * @param data - User creation data
    * @returns Created user object
    */
-  async createUser(data: CreateUserDto): Promise<User> {
+  async createUser(data: InternalCreateUserDto): Promise<User> {
     const now = Date.now();
     const result = await this.db
       .prepare(
@@ -626,7 +626,7 @@ export class Queries {
    * @param data - User update data
    * @returns Updated user object
    */
-  async updateUser(id: string, data: UpdateUserDto): Promise<User> {
+  async updateUser(id: string, data: InternalUpdateUserDto): Promise<User> {
     const updates: string[] = [];
     const params: (string | number | boolean)[] = [];
     let paramIndex = 1;
@@ -746,7 +746,7 @@ export class Queries {
    * @param data - Provider creation data
    * @returns Created provider object
    */
-  async createProvider(data: CreateProviderDto): Promise<Provider> {
+  async createProvider(data: InternalCreateProviderDto): Promise<Provider> {
     const now = Date.now();
     const result = await this.db
       .prepare(
@@ -780,7 +780,7 @@ export class Queries {
    * @param data - Provider update data
    * @returns Updated provider object
    */
-  async updateProvider(id: string, data: UpdateProviderDto): Promise<Provider> {
+  async updateProvider(id: string, data: InternalUpdateProviderDto): Promise<Provider> {
     const updates: string[] = [];
     const params: (string | number | boolean)[] = [];
     let paramIndex = 1;
@@ -906,7 +906,7 @@ export class Queries {
    * @param data - Model creation data
    * @returns Created model object
    */
-  async createModel(data: CreateModelDto): Promise<Model> {
+  async createModel(data: InternalCreateModelDto): Promise<Model> {
     const now = Date.now();
     const result = await this.db
       .prepare(
@@ -941,7 +941,7 @@ export class Queries {
    * @param data - Model update data
    * @returns Updated model object
    */
-  async updateModel(id: string, data: UpdateModelDto): Promise<Model> {
+  async updateModel(id: string, data: InternalUpdateModelDto): Promise<Model> {
     const updates: string[] = [];
     const params: (string | number | boolean | null)[] = [];
     let paramIndex = 1;
@@ -1301,7 +1301,7 @@ export class Queries {
    * @param data - API key creation data
    * @returns Created API key object
    */
-  async createApiKey(data: CreateApiKeyDto): Promise<ApiKey> {
+  async createApiKey(data: InternalCreateApiKeyDto): Promise<ApiKey> {
     const now = Date.now();
     const result = await this.db
       .prepare(
@@ -1348,7 +1348,7 @@ export class Queries {
    * @param data - API key update data
    * @returns Updated API key object
    */
-  async updateApiKey(id: string, data: UpdateApiKeyDto): Promise<ApiKey> {
+  async updateApiKey(id: string, data: InternalUpdateApiKeyDto): Promise<ApiKey> {
     const updates: string[] = [];
     const params: (string | number | boolean | null)[] = [];
     let paramIndex = 1;
@@ -1642,7 +1642,7 @@ export class Queries {
    * @param data - Usage log data
    * @returns Created usage log
    */
-  async createUsageLog(data: CreateUsageLogDto): Promise<UsageLog> {
+  async createUsageLog(data: InternalCreateUsageLogDto): Promise<UsageLog> {
     const result = await this.db
       .prepare(
         `INSERT INTO usage_logs (
@@ -1691,7 +1691,7 @@ export class Queries {
    * @param data - Quota change data
    * @returns Created quota change record
    */
-  async recordQuotaChange(data: QuotaChangeDto): Promise<void> {
+  async recordQuotaChange(data: InternalQuotaChangeDto): Promise<void> {
     const result = await this.db
       .prepare(
         `INSERT INTO quota_changes (
@@ -1858,8 +1858,8 @@ function getQueries(db: D1Database): Queries {
 // Company operations
 export const getCompany = (db: D1Database, id: string) => getQueries(db).getCompany(id);
 export const getCompanyByName = (db: D1Database, name: string) => getQueries(db).getCompanyByName(name);
-export const createCompany = (db: D1Database, data: CreateCompanyDto) => getQueries(db).createCompany(data);
-export const updateCompany = (db: D1Database, id: string, data: UpdateCompanyDto) =>
+export const createCompany = (db: D1Database, data: InternalCreateCompanyDto) => getQueries(db).createCompany(data);
+export const updateCompany = (db: D1Database, id: string, data: InternalUpdateCompanyDto) =>
   getQueries(db).updateCompany(id, data);
 export const listCompanies = (db: D1Database) => getQueries(db).listCompanies();
 export const deleteCompany = (db: D1Database, id: string) => getQueries(db).deleteCompany(id);
@@ -1869,9 +1869,9 @@ export const getDepartment = (db: D1Database, id: string) => getQueries(db).getD
 export const listDepartmentsByCompany = (db: D1Database, companyId: string) =>
   getQueries(db).listDepartmentsByCompany(companyId);
 export const listAllDepartments = (db: D1Database) => getQueries(db).listAllDepartments();
-export const createDepartment = (db: D1Database, data: CreateDepartmentDto) =>
+export const createDepartment = (db: D1Database, data: InternalCreateDepartmentDto) =>
   getQueries(db).createDepartment(data);
-export const updateDepartment = (db: D1Database, id: string, data: UpdateDepartmentDto) =>
+export const updateDepartment = (db: D1Database, id: string, data: InternalUpdateDepartmentDto) =>
   getQueries(db).updateDepartment(id, data);
 export const deleteDepartment = (db: D1Database, id: string) => getQueries(db).deleteDepartment(id);
 
@@ -1883,8 +1883,8 @@ export const listUsersByCompany = (db: D1Database, companyId: string) =>
 export const listUsersByDepartment = (db: D1Database, departmentId: string) =>
   getQueries(db).listUsersByDepartment(departmentId);
 export const listAllUsers = (db: D1Database) => getQueries(db).listAllUsers();
-export const createUser = (db: D1Database, data: CreateUserDto) => getQueries(db).createUser(data);
-export const updateUser = (db: D1Database, id: string, data: UpdateUserDto) =>
+export const createUser = (db: D1Database, data: InternalCreateUserDto) => getQueries(db).createUser(data);
+export const updateUser = (db: D1Database, id: string, data: InternalUpdateUserDto) =>
   getQueries(db).updateUser(id, data);
 export const deleteUser = (db: D1Database, id: string) => getQueries(db).deleteUser(id);
 
@@ -1893,8 +1893,8 @@ export const getProvider = (db: D1Database, id: string) => getQueries(db).getPro
 export const getProviderByName = (db: D1Database, name: string) => getQueries(db).getProviderByName(name);
 export const listActiveProviders = (db: D1Database) => getQueries(db).listActiveProviders();
 export const listProviders = (db: D1Database) => getQueries(db).listProviders();
-export const createProvider = (db: D1Database, data: CreateProviderDto) => getQueries(db).createProvider(data);
-export const updateProvider = (db: D1Database, id: string, data: UpdateProviderDto) =>
+export const createProvider = (db: D1Database, data: InternalCreateProviderDto) => getQueries(db).createProvider(data);
+export const updateProvider = (db: D1Database, id: string, data: InternalUpdateProviderDto) =>
   getQueries(db).updateProvider(id, data);
 export const deleteProvider = (db: D1Database, id: string) => getQueries(db).deleteProvider(id);
 
@@ -1904,8 +1904,8 @@ export const getModelByModelId = (db: D1Database, modelId: string) => getQueries
 export const getModelByAlias = (db: D1Database, alias: string) => getQueries(db).getModelByAlias(alias);
 export const listActiveModels = (db: D1Database) => getQueries(db).listActiveModels();
 export const listModels = (db: D1Database) => getQueries(db).listModels();
-export const createModel = (db: D1Database, data: CreateModelDto) => getQueries(db).createModel(data);
-export const updateModel = (db: D1Database, id: string, data: UpdateModelDto) =>
+export const createModel = (db: D1Database, data: InternalCreateModelDto) => getQueries(db).createModel(data);
+export const updateModel = (db: D1Database, id: string, data: InternalUpdateModelDto) =>
   getQueries(db).updateModel(id, data);
 export const deleteModel = (db: D1Database, id: string) => getQueries(db).deleteModel(id);
 
@@ -1944,8 +1944,8 @@ export const listApiKeys = (
     offset?: number;
   } = {}
 ) => getQueries(db).listApiKeys(options);
-export const createApiKey = (db: D1Database, data: CreateApiKeyDto) => getQueries(db).createApiKey(data);
-export const updateApiKey = (db: D1Database, id: string, data: UpdateApiKeyDto) =>
+export const createApiKey = (db: D1Database, data: InternalCreateApiKeyDto) => getQueries(db).createApiKey(data);
+export const updateApiKey = (db: D1Database, id: string, data: InternalUpdateApiKeyDto) =>
   getQueries(db).updateApiKey(id, data);
 export const deleteApiKey = (db: D1Database, id: string) => getQueries(db).deleteApiKey(id);
 export const addApiKeyBonus = (
@@ -1957,9 +1957,9 @@ export const addApiKeyBonus = (
 export const resetApiKeyQuota = (db: D1Database, id: string) => getQueries(db).resetApiKeyQuota(id);
 
 // Usage operations
-export const createUsageLog = (db: D1Database, data: CreateUsageLogDto) =>
+export const createUsageLog = (db: D1Database, data: InternalCreateUsageLogDto) =>
   getQueries(db).createUsageLog(data);
-export const recordQuotaChange = (db: D1Database, data: QuotaChangeDto) =>
+export const recordQuotaChange = (db: D1Database, data: InternalQuotaChangeDto) =>
   getQueries(db).recordQuotaChange(data);
 export const getUsageByTimeRange = (db: D1Database, companyId: string, startDate: number, endDate: number) =>
   getQueries(db).getUsageByTimeRange(companyId, startDate, endDate);
@@ -2069,7 +2069,7 @@ export const deductCompanyMixedQuota = async (db: D1Database, companyId: string,
   if (!result) throw new Error(`Company not found after deduction: ${companyId}`);
   return result;
 };
-export const createQuotaChange = (db: D1Database, data: QuotaChangeDto) =>
+export const createQuotaChange = (db: D1Database, data: InternalQuotaChangeDto) =>
   getQueries(db).recordQuotaChange(data);
 
 // Usage query operations
@@ -2159,7 +2159,7 @@ export const queryUsageLogs = async (db: D1Database, options: {
     .bind(...params, limit, offset)
     .all();
 
-  return { logs: result.results, total };
+  return { logs: result.results as unknown as UsageLog[], total };
 };
 export const getUsageStats = async (db: D1Database, options: {
   company_id?: string;
@@ -2769,3 +2769,22 @@ export const getSystemUserQuota = async (db: D1Database): Promise<{
     quota_remaining: result.quota_daily - result.quota_used,
   };
 };
+
+// ============================================
+// Type Aliases for backward compatibility
+// These re-export internal DTOs with public names for API compatibility
+// ============================================
+export type CreateCompanyDto = InternalCreateCompanyDto;
+export type UpdateCompanyDto = InternalUpdateCompanyDto;
+export type CreateDepartmentDto = InternalCreateDepartmentDto;
+export type UpdateDepartmentDto = InternalUpdateDepartmentDto;
+export type CreateUserDto = InternalCreateUserDto;
+export type UpdateUserDto = InternalUpdateUserDto;
+export type CreateProviderDto = InternalCreateProviderDto;
+export type UpdateProviderDto = InternalUpdateProviderDto;
+export type CreateModelDto = InternalCreateModelDto;
+export type UpdateModelDto = InternalUpdateModelDto;
+export type CreateApiKeyDto = InternalCreateApiKeyDto;
+export type UpdateApiKeyDto = InternalUpdateApiKeyDto;
+export type CreateUsageLogDto = InternalCreateUsageLogDto;
+export type QuotaChangeDto = InternalQuotaChangeDto;
