@@ -23,7 +23,7 @@
 
 **运行测试要求**：
 - **必须**设置 `TEST_CLEANUP=true` 环境变量运行测试
-- 测试完成后自动调用 `/admin/test/cleanup` 清理端点
+- 测试完成后通过 `wrangler d1 execute` 命令直接清理数据库
 - 测试失败时仍应执行清理逻辑
 
 **正确方式**：
@@ -42,10 +42,10 @@ TEST_CLEANUP=true pnpm test tests/functional/auth/auth-flows.test.ts
 - ❌ 直接运行 `pnpm test`（会留下脏数据）
 - ❌ 运行 `pnpm test:functional`（会留下脏数据）
 
-**验收标准**：
-- 每个测试文件执行后必须清理自身创建的数据
-- 测试数据通过 `/admin/test/cleanup` API 统一清理
-- 涉及数据库操作的测试使用专门的清理端点
+**清理机制**：
+- 测试清理 SQL 由 `tests/functional/helpers/cleanup.ts` 生成
+- 清理命令通过 `wrangler d1 execute agate-db --local --command="..."` 执行
+- 清理规则：删除包含测试特征的数据（13+ 位时间戳 ID、@example.com 邮箱、"Test " 开头的名称等）
 
 **例外情况**：
 - 单元测试（使用 mock，不访问真实数据库）

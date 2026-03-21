@@ -53,7 +53,7 @@ export interface QuotaDeductionResult {
   tokens: number;
   /** Updated quota values */
   updated: {
-    apiKey: { quota_used: number };
+    apiKey: { quota_used: number; quota_bonus_used: number };
     user: { quota_used: number };
     department?: { daily_used: number; quota_used: number };
     company: { daily_used: number; quota_used: number };
@@ -182,6 +182,9 @@ export class QuotaService {
     // Check and reset daily quotas if needed
     await this.ensureDailyQuotasReset(apiKey, user, department, company);
 
+    // Clean up expired bonus quota
+    await queries.cleanupExpiredBonus(this.db, apiKey.id);
+
     // Fetch fresh data after potential resets
     const [freshKey, freshUser, freshDept, freshCompany] = await Promise.all([
       queries.getApiKey(this.db, apiKey.id),
@@ -198,7 +201,13 @@ export class QuotaService {
 
     // Calculate available quota including bonus
     const apiKeyAvailable = this.calculateApiKeyAvailable(freshKey);
-    const userAvailable = freshUser.quota_daily - freshUser.quota_used;
+
+    // Calculate user available quota
+    // If user is unlimited, skip user level check
+    // If user quota_daily is 0, it means cascade to parent (0 available at user level)
+    const userAvailable = freshUser.is_unlimited
+      ? Infinity
+      : freshUser.quota_daily - freshUser.quota_used;
 
     // Check API Key quota
     if (apiKeyAvailable < tokens) {
@@ -220,8 +229,8 @@ export class QuotaService {
       };
     }
 
-    // Check User quota
-    if (userAvailable < tokens) {
+    // Check User quota (skip if user is unlimited)
+    if (!freshUser.is_unlimited && userAvailable < tokens) {
       return {
         allowed: false,
         remaining: {
@@ -315,6 +324,7 @@ export class QuotaService {
    * @param departmentId - Department ID (optional)
    * @param companyId - Company ID
    * @param tokens - Tokens to deduct
+   * @param isUnlimited - Whether the API key has unlimited quota (skips upstream deduction)
    * @returns Deduction result
    */
   async deductQuota(
@@ -322,10 +332,45 @@ export class QuotaService {
     userId: string,
     departmentId: string | null,
     companyId: string,
-    tokens: number
+    tokens: number,
+    isUnlimited: boolean = false
   ): Promise<QuotaDeductionResult> {
-    // Deduct from API Key
-    const apiKey = await queries.deductApiKeyQuota(this.db, apiKeyId, tokens);
+    // For unlimited keys, skip quota deduction, return current values
+    if (isUnlimited) {
+      const [apiKey, user, company] = await Promise.all([
+        queries.getApiKey(this.db, apiKeyId),
+        queries.getUser(this.db, userId),
+        queries.getCompany(this.db, companyId),
+      ]);
+      if (!apiKey || !user || !company) {
+        throw new Error("Failed to fetch entities for unlimited quota");
+      }
+
+      const department = departmentId
+        ? await queries.getDepartment(this.db, departmentId)
+        : null;
+
+      return {
+        tokens,
+        updated: {
+          apiKey: { quota_used: apiKey.quota_used, quota_bonus_used: apiKey.quota_bonus_used },
+          user: { quota_used: user.quota_used },
+          ...(department && {
+            department: {
+              daily_used: department.daily_used,
+              quota_used: department.quota_used,
+            },
+          }),
+          company: {
+            daily_used: company.daily_used,
+            quota_used: company.quota_used,
+          },
+        },
+      };
+    }
+
+    // Deduct from API Key (with bonus fallback)
+    const apiKey = await queries.deductApiKeyQuotaWithBonus(this.db, apiKeyId, tokens);
 
     // Deduct from User
     const user = await queries.deductUserQuota(this.db, userId, tokens);
@@ -342,7 +387,7 @@ export class QuotaService {
     return {
       tokens,
       updated: {
-        apiKey: { quota_used: apiKey.quota_used },
+        apiKey: { quota_used: apiKey.quota_used, quota_bonus_used: apiKey.quota_bonus_used },
         user: { quota_used: user.quota_used },
         ...(department && {
           department: {
@@ -709,6 +754,8 @@ export class QuotaService {
   /**
    * Calculates available quota for an API Key including bonus.
    *
+   * Bonus is only counted if it hasn't expired.
+   *
    * @param apiKey - API Key entity
    * @returns Available quota
    */
@@ -716,10 +763,10 @@ export class QuotaService {
     const dailyRemaining = apiKey.quota_daily - apiKey.quota_used;
     let bonusRemaining = 0;
 
-    // Check if bonus is still valid
-    if (apiKey.quota_bonus > 0) {
+    // Check if bonus is still valid (has amount and not expired)
+    if (apiKey.quota_bonus > apiKey.quota_bonus_used) {
       if (!apiKey.quota_bonus_expiry || apiKey.quota_bonus_expiry > Date.now()) {
-        bonusRemaining = apiKey.quota_bonus;
+        bonusRemaining = apiKey.quota_bonus - apiKey.quota_bonus_used;
       }
     }
 

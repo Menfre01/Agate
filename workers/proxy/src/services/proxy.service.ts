@@ -196,7 +196,8 @@ export class ProxyService {
       user.id,
       department?.id ?? null,
       company.id,
-      actualTokens
+      actualTokens,
+      apiKey.is_unlimited
     );
 
     // Record usage - use actual upstream model name for cost calculation

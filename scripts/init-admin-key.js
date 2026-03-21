@@ -26,13 +26,15 @@ const __dirname = dirname(__filename);
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const result = { prod: false, config: undefined, fixed: false };
+  const result = { prod: false, config: undefined, fixed: false, remote: false };
 
   for (const arg of args) {
     if (arg === "--prod") {
       result.prod = true;
     } else if (arg === "--fixed") {
       result.fixed = true;
+    } else if (arg === "--remote") {
+      result.remote = true;
     } else if (arg.startsWith("--config=")) {
       result.config = arg.split("=")[1];
     } else if (arg === "--config" && args.indexOf(arg) + 1 < args.length) {
@@ -107,10 +109,11 @@ function getDatabaseName(configPath) {
   }
 }
 
-function executeSql(dbName, sql, config, local) {
+function executeSql(dbName, sql, config, local, remote) {
   const configFlag = `--config ${config}`;
   const localFlag = local ? "--local" : "";
-  const command = `npx wrangler d1 execute ${dbName} ${configFlag} ${localFlag} --command "${sql}"`;
+  const remoteFlag = remote ? "--remote" : "";
+  const command = `npx wrangler d1 execute ${dbName} ${configFlag} ${localFlag} ${remoteFlag} --command "${sql}"`;
 
   try {
     execSync(command, { stdio: "inherit" });
@@ -120,10 +123,11 @@ function executeSql(dbName, sql, config, local) {
   }
 }
 
-function executeSqlCapture(dbName, sql, config, local) {
+function executeSqlCapture(dbName, sql, config, local, remote) {
   const configFlag = `--config ${config}`;
   const localFlag = local ? "--local" : "";
-  const command = `npx wrangler d1 execute ${dbName} ${configFlag} ${localFlag} --command "${sql}"`;
+  const remoteFlag = remote ? "--remote" : "";
+  const command = `npx wrangler d1 execute ${dbName} ${configFlag} ${localFlag} ${remoteFlag} --command "${sql}"`;
 
   try {
     return execSync(command, { encoding: "utf-8" });
@@ -137,6 +141,7 @@ async function main() {
   const args = parseArgs();
   const config = getWranglerConfig(args);
   const local = !args.prod;
+  const remote = args.remote;
   const dbName = getDatabaseName(config);
 
   console.log("========================================");
@@ -163,7 +168,7 @@ async function main() {
   const checkUserSql = `SELECT id, email FROM users WHERE role = 'admin' LIMIT 1;`;
 
   try {
-    const result = executeSqlCapture(dbName, checkUserSql, config, local);
+    const result = executeSqlCapture(dbName, checkUserSql, config, local, remote);
 
     // Parse result to find admin user
     const userIdMatch = result.match(/u_[a-zA-Z0-9_]+/);
@@ -172,13 +177,41 @@ async function main() {
     // Get company and department from user
     console.log("Getting user organization info...");
     const userSql = `SELECT company_id, department_id FROM users WHERE id = '${userId}';`;
-    const userResult = executeSqlCapture(dbName, userSql, config, local);
+    const userResult = executeSqlCapture(dbName, userSql, config, local, remote);
 
     const companyMatch = userResult.match(/co_[a-zA-Z0-9_]+/);
     const deptMatch = userResult.match(/dept_[a-zA-Z0-9_]+/);
 
     const companyId = companyMatch ? companyMatch[0] : "co_demo_company";
     const departmentId = deptMatch ? deptMatch[0] : "dept_engineering";
+
+    // Check if admin API key already exists (for idempotency)
+    console.log("Checking for existing admin API key...");
+    const checkKeySql = `SELECT id, key_prefix FROM api_keys WHERE user_id = '${userId}' AND name = 'Super Admin Key' LIMIT 1;`;
+    const keyResult = executeSqlCapture(dbName, checkKeySql, config, local, remote);
+
+    if (keyResult.includes("sk-") && !args.fixed) {
+      // Admin key already exists, just display it
+      const keyPrefixMatch = keyResult.match(/"key_prefix":\s*"sk-[0-9]+/);
+      const keyPrefix = keyPrefixMatch ? keyPrefixMatch[0].split('"')[3] : null;
+
+      if (keyPrefix) {
+        console.log("");
+        console.log("========================================");
+        console.log("✓ Admin API Key already exists!");
+        console.log("========================================");
+        console.log("");
+        console.log(`Key Prefix: ${keyPrefix}`);
+        console.log("");
+        console.log("Use this key to access admin endpoints:");
+        console.log(`  curl -H "x-api-key: <YOUR_KEY>" \\`);
+        console.log(`       https://your-worker/admin/keys`);
+        console.log("");
+        console.log("Note: The existing key is still valid. Use --fixed to create a fixed key.");
+        console.log("      To generate a new key, delete the existing one first.");
+        return;
+      }
+    }
 
     // Generate key ID (fixed or dynamic)
     const keyId = args.fixed ? "ak_admin_key" : `ak_${Date.now()}`;
@@ -188,7 +221,7 @@ async function main() {
     if (args.fixed) {
       console.log("Removing existing fixed admin key...");
       const deleteSql = `DELETE FROM api_keys WHERE id = '${keyId}';`;
-      executeSql(dbName, deleteSql, config, local);
+      executeSql(dbName, deleteSql, config, local, remote);
     }
 
     // Insert new admin key
@@ -214,7 +247,7 @@ async function main() {
       ${now}
     );`;
 
-    executeSql(dbName, insertSql, config, local);
+    executeSql(dbName, insertSql, config, local, remote);
 
     console.log("");
     console.log("========================================");

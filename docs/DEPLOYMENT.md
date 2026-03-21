@@ -9,12 +9,13 @@
 
 ### Architecture Overview
 
-Agate uses a **split-worker architecture** for optimal performance:
+Agate uses a **multi-worker architecture** for optimal performance:
 
 - **Proxy Worker** (`agate-proxy`) - Handles high-frequency API requests (`/v1/*`)
 - **Admin Worker** (`agate-admin`) - Handles management operations (`/admin/*`)
+- **Health Worker** (`agate-health`) - Periodic health checks for provider credentials (cron: `*/5 * * * *`)
 
-Both workers share the same D1 database and KV cache.
+All workers share the same D1 database and KV cache.
 
 ### Table of Contents
 
@@ -58,8 +59,9 @@ The easiest way to deploy is using the quick deploy script:
 The script will automatically:
 1. Create D1 database (if not exists)
 2. Create KV namespace (if not exists)
-3. Deploy database schema
-4. Deploy **both** Proxy and Admin workers
+3. Deploy database schema and production seed data
+4. Deploy Proxy, Admin, and Health workers
+5. Initialize super admin API key
 
 ---
 
@@ -164,11 +166,21 @@ Create `workers/admin/wrangler.prod.jsonc`:
 }
 ```
 
-#### Step 5: Deploy Database Schema
+#### Step 5: Deploy Database Schema and Seed Data
 
 ```bash
+# Deploy schema
 wrangler d1 execute agate-db --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc
+
+# Deploy seed data (includes system user for health check)
+wrangler d1 execute agate-db --file=./scripts/seed-prod.sql --config workers/proxy/wrangler.prod.jsonc
 ```
+
+**Seed data includes:**
+- System user (`sys-health-user`) for health check logging
+- System company and API key for health check
+- Anthropic provider
+- Claude models (Opus 4.6, Sonnet 4.6, Haiku 4.5) with pricing
 
 #### Step 6: Deploy Workers
 
@@ -180,6 +192,11 @@ cd ../..
 
 # Deploy Admin Worker
 cd workers/admin
+wrangler deploy --config wrangler.prod.jsonc
+cd ../..
+
+# Deploy Health Worker (cron: */5 * * * *)
+cd workers/health
 wrangler deploy --config wrangler.prod.jsonc
 cd ../..
 ```
@@ -218,28 +235,22 @@ npm run db:migrate:local
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| ENVIRONMENT | Environment identifier | production |
+| Variable | Worker | Description | Default |
+|----------|--------|-------------|---------|
+| ENVIRONMENT | All | Environment identifier | production |
+| SYSTEM_USER_ID | Health | System user ID for health check logging | sys-health-user |
+| SYSTEM_COMPANY_ID | Health | System company ID for health check | sys-health |
 
 ---
 
 ### API Endpoints
 
-#### Proxy API (Proxy Worker - agate-proxy)
+For complete API documentation, see [API Documentation](./API.md).
 
-- `POST /v1/messages` - Anthropic Messages API proxy
-- `GET /v1/models` - Model list
-- `GET /health` - Health check
-
-#### Admin API (Admin Worker - agate-admin)
-
-- `GET /admin/keys` - List API Keys
-- `POST /admin/keys` - Create API Key
-- `DELETE /admin/keys/:id` - Delete Key
-- `GET /admin/providers` - List providers
-- `GET /admin/models` - List models
-- `GET /admin/stats/usage` - Usage statistics
+**Quick Overview:**
+- **Proxy Worker** (`agate-proxy`): `/v1/*` - Anthropic Messages API proxy
+- **Admin Worker** (`agate-admin`): `/admin/*` - Management operations
+- **Health Worker** (`agate-health`): Cron-triggered health checks
 
 ---
 
@@ -269,6 +280,12 @@ Ensure the `routes` domain is correct and DNS points to Cloudflare. Each worker 
 
 Verify upstream API credentials are valid in the provider configuration.
 
+#### Health Check Not Working
+
+1. Verify system user exists: `SELECT * FROM users WHERE id = 'sys-health-user'`
+2. Check Health Worker has `SYSTEM_USER_ID` and `SYSTEM_COMPANY_ID` vars
+3. Ensure `seed-prod.sql` was executed after schema deployment
+
 ---
 
 <a name="简体中文"></a>
@@ -276,12 +293,13 @@ Verify upstream API credentials are valid in the provider configuration.
 
 ### 架构概述
 
-Agate 使用 **拆分 Worker 架构** 以获得最佳性能：
+Agate 使用 **多 Worker 架构** 以获得最佳性能：
 
 - **Proxy Worker** (`agate-proxy`) - 处理高频 API 请求 (`/v1/*`)
 - **Admin Worker** (`agate-admin`) - 处理管理操作 (`/admin/*`)
+- **Health Worker** (`agate-health`) - 定期检查供应商凭证健康状态 (cron: `*/5 * * * *`)
 
-两个 Worker 共享同一个 D1 数据库和 KV 缓存。
+所有 Worker 共享同一个 D1 数据库和 KV 缓存。
 
 ### 目录
 
@@ -325,8 +343,9 @@ wrangler login
 脚本将自动：
 1. 创建 D1 数据库（如果不存在）
 2. 创建 KV 命名空间（如果不存在）
-3. 部署数据库架构
-4. 部署 **两个** Worker（Proxy 和 Admin）
+3. 部署数据库架构和生产种子数据
+4. 部署三个 Worker（Proxy、Admin、Health）
+5. 初始化超级管理员 API Key
 
 ---
 
@@ -431,11 +450,56 @@ wrangler kv:namespace create "agate-cache" --preview
 }
 ```
 
-#### 步骤 5：部署数据库架构
+创建 `workers/health/wrangler.prod.jsonc`：
+
+```jsonc
+{
+  "name": "agate-health",
+  "compatibility_date": "2024-01-01",
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "agate-db",
+    "database_id": "你的_D1_DATABASE_ID"
+  }],
+
+  "kv_namespaces": [{
+    "binding": "KV_CACHE",
+    "id": "你的_KV_NAMESPACE_ID",
+    "preview_id": "你的_KV_PREVIEW_ID"
+  }],
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "SYSTEM_USER_ID": "sys-health-user",
+    "SYSTEM_COMPANY_ID": "sys-health"
+  },
+
+  "triggers": [
+    {
+      "cron": "*/5 * * * *"
+    }
+  ]
+}
+```
+
+#### 步骤 5：部署数据库架构和种子数据
 
 ```bash
+# 部署架构
 wrangler d1 execute agate-db --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc
+
+# 部署种子数据（包含健康检查系统用户）
+wrangler d1 execute agate-db --file=./scripts/seed-prod.sql --config workers/proxy/wrangler.prod.jsonc
 ```
+
+**种子数据包含：**
+- 系统用户 (`sys-health-user`) 用于健康检查日志记录
+- 系统公司和 API Key 用于健康检查
+- Anthropic 供应商
+- Claude 模型（Opus 4.6、Sonnet 4.6、Haiku 4.5）及定价
 
 #### 步骤 6：部署 Worker
 
@@ -447,6 +511,11 @@ cd ../..
 
 # 部署 Admin Worker
 cd workers/admin
+wrangler deploy --config wrangler.prod.jsonc
+cd ../..
+
+# 部署 Health Worker（cron: */5 * * * *）
+cd workers/health
 wrangler deploy --config wrangler.prod.jsonc
 cd ../..
 ```
@@ -485,28 +554,22 @@ npm run db:migrate:local
 
 ### 环境变量
 
-| 变量 | 描述 | 默认值 |
-|------|------|--------|
-| ENVIRONMENT | 环境标识符 | production |
+| 变量 | Worker | 描述 | 默认值 |
+|------|--------|------|--------|
+| ENVIRONMENT | 全部 | 环境标识符 | production |
+| SYSTEM_USER_ID | Health | 健康检查系统用户 ID | sys-health-user |
+| SYSTEM_COMPANY_ID | Health | 健康检查系统公司 ID | sys-health |
 
 ---
 
 ### API 端点
 
-#### Proxy API（Proxy Worker - agate-proxy）
+完整的 API 文档请参考 [API 文档](./API.md)。
 
-- `POST /v1/messages` - Anthropic Messages API 代理
-- `GET /v1/models` - 模型列表
-- `GET /health` - 健康检查
-
-#### Admin API（Admin Worker - agate-admin）
-
-- `GET /admin/keys` - 列出 API Keys
-- `POST /admin/keys` - 创建 API Key
-- `DELETE /admin/keys/:id` - 删除 Key
-- `GET /admin/providers` - 列出供应商
-- `GET /admin/models` - 列出模型
-- `GET /admin/stats/usage` - 使用统计
+**快速概览：**
+- **Proxy Worker** (`agate-proxy`)：`/v1/*` - Anthropic Messages API 代理
+- **Admin Worker** (`agate-admin`)：`/admin/*` - 管理操作
+- **Health Worker** (`agate-health`)：Cron 触发的健康检查
 
 ---
 
@@ -535,3 +598,9 @@ npm run db:migrate:local
 #### 请求超时
 
 验证上游 API 凭据在供应商配置中是否有效。
+
+#### 健康检查不工作
+
+1. 检查系统用户是否存在：`SELECT * FROM users WHERE id = 'sys-health-user'`
+2. 确认 Health Worker 配置了 `SYSTEM_USER_ID` 和 `SYSTEM_COMPANY_ID` 变量
+3. 确保在架构部署后执行了 `seed-prod.sql`

@@ -1,12 +1,69 @@
--- AI Gateway Seed Data
+-- AI Gateway Seed Data (Development/Testing)
 --
 -- This script inserts initial data for development/testing.
 -- Run after schema.sql:
---   wrangler d1 execute ai-gateway-db --file=./src/db/schema.sql --local
---   wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql --local
+--   wrangler d1 execute agate-db --file=./packages/shared/src/db/schema.sql --local
+--   wrangler d1 execute agate-db --file=./scripts/seed-data.sql --local
 --
 -- Models updated: 2026-03-18
 -- Based on: https://platform.claude.com/docs/en/about-claude/models/overview
+
+-- ============================================
+-- System User (Required for Health Check)
+-- ============================================
+
+-- System company for health check
+INSERT INTO companies (id, name, quota_pool, quota_used, quota_daily, daily_used, last_reset_at, created_at, updated_at)
+VALUES (
+  'sys-health',
+  'System Health Check',
+  0,
+  0,
+  10000,
+  0,
+  1727740800000,
+  1727740800000,
+  1727740800000
+) ON CONFLICT(id) DO NOTHING;
+
+-- System user for health check
+INSERT INTO users (id, email, name, company_id, department_id, role, quota_daily, quota_used, is_active, last_reset_at, created_at, updated_at)
+VALUES (
+  'sys-health-user',
+  'system@agate.internal',
+  'Health Check System',
+  'sys-health',
+  NULL,
+  'admin',
+  10000,
+  0,
+  TRUE,
+  1727740800000,
+  1727740800000,
+  1727740800000
+) ON CONFLICT(email) DO NOTHING;
+
+-- System API key for health check (development only)
+INSERT INTO api_keys (
+  id, key_hash, key_prefix, user_id, company_id, department_id,
+  name, quota_daily, quota_used, quota_bonus, is_unlimited, is_active,
+  created_at, updated_at
+) VALUES (
+  'sys-health-api-key',
+  'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+  'sk-health-****',
+  'sys-health-user',
+  'sys-health',
+  NULL,
+  'System Health Check API Key',
+  10000,
+  0,
+  0,
+  FALSE,
+  TRUE,
+  1727740800000,
+  1727740800000
+) ON CONFLICT(key_hash) DO NOTHING;
 
 -- ============================================
 -- Organizations
@@ -255,10 +312,12 @@ VALUES
 -- ============================================
 
 -- Seed data inserted:
+-- - 1 system user (for health check)
+-- - 1 system API key (for health check)
 -- - 1 company (Demo Company)
 -- - 1 department (Engineering)
 -- - 2 users (Admin, Demo User)
--- - 2 API keys
+-- - 2 API keys (admin, demo)
 -- - 1 provider (Anthropic)
 -- - 3 models (Claude Opus 4.6, Sonnet 4.6, Haiku 4.5) with pricing
 -- - 3 department-model permissions

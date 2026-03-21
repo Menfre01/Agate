@@ -83,6 +83,7 @@ describe("ProxyService", () => {
     quota_daily: 10000,
     quota_used: 1000,
     quota_bonus: 0,
+    quota_bonus_used: 0,
     quota_bonus_expiry: null,
     is_unlimited: false,
     is_active: true,
@@ -103,6 +104,7 @@ describe("ProxyService", () => {
     quota_daily: 10000,
     quota_used: 500,
     is_active: true,
+    is_unlimited: false,
     last_reset_at: Date.now(),
     created_at: Date.now(),
     updated_at: Date.now(),
@@ -311,7 +313,8 @@ describe("ProxyService", () => {
         "user-123",
         "dept-123",
         "company-123",
-        30
+        30,
+        false
       );
     });
 

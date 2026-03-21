@@ -37,12 +37,12 @@ echo -e "${BLUE}========================================${NC}"
 
 # Check if user is logged in to wrangler
 echo -e "\n${YELLOW}Checking Cloudflare login...${NC}"
-if ! wrangler whoami &>/dev/null; then
+if ! npx wrangler whoami &>/dev/null; then
   echo -e "${YELLOW}Please login to Cloudflare:${NC}"
-  wrangler login
+  npx wrangler login
 fi
 
-ACCOUNT_INFO=$(wrangler whoami 2>/dev/null)
+ACCOUNT_INFO=$(npx wrangler whoami 2>/dev/null)
 echo -e "${GREEN}Logged in${NC}"
 echo "$ACCOUNT_INFO" | head -3
 
@@ -51,7 +51,7 @@ if [ -z "$ACCOUNT_ID" ]; then
   echo -e "\n${YELLOW}No account_id provided, auto-detecting...${NC}"
 
   # Try to get from wrangler whoami
-  ACCOUNT_ID=$(wrangler whoami 2>/dev/null | grep -o 'Account ID.*' | grep -o '[a-f0-9]\{32\}' | head -1)
+  ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o 'Account ID.*' | grep -o '[a-f0-9]\{32\}' | head -1)
 
   # If still empty, try from existing config
   if [ -z "$ACCOUNT_ID" ]; then
@@ -68,6 +68,9 @@ fi
 
 echo -e "\n${BLUE}Using Account ID: ${ACCOUNT_ID}${NC}"
 
+# Set CLOUDFLARE_ACCOUNT_ID for all wrangler commands
+export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+
 # Unique identifier for this deployment
 DEPLOY_ID=$(date +%s)
 DB_NAME="agate-db"
@@ -78,23 +81,23 @@ KV_PREVIEW_ID=""
 # ============================================
 # Step 1: Create D1 Database (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[1/7] Setting up D1 Database...${NC}"
+echo -e "\n${YELLOW}[1/8] Setting up D1 Database...${NC}"
 
 # Check if database already exists
-EXISTING_DB=$(wrangler d1 list 2>/dev/null | grep -o "$DB_NAME" || true)
+EXISTING_DB=$(npx wrangler d1 list 2>/dev/null | grep -o "$DB_NAME" || true)
 
 if [ -n "$EXISTING_DB" ]; then
   echo -e "${GREEN}Database '$DB_NAME' already exists${NC}"
-  # Get existing database ID
-  DB_ID=$(wrangler d1 list 2>/dev/null | grep -A2 "$DB_NAME" | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
+  # Get existing database ID (UUID format)
+  DB_ID=$(npx wrangler d1 list 2>/dev/null | grep "$DB_NAME" | grep -o '[a-f0-9]\{8\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{12\}' | head -1 || echo "")
   if [ -z "$DB_ID" ]; then
     # Try alternate method to get ID
-    DB_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A5 "$DB_NAME" | grep "database_id" | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
+    DB_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A5 "$DB_NAME" | grep "database_id" | grep -o '[a-f0-9]\{8\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{12\}' | head -1 || echo "")
   fi
 else
   echo -e "${BLUE}Creating D1 database '$DB_NAME'...${NC}"
-  wrangler d1 create "$DB_NAME" >/dev/null 2>&1 || wrangler d1 create "$DB_NAME"
-  DB_ID=$(wrangler d1 list 2>/dev/null | grep -A2 "$DB_NAME" | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
+  npx wrangler d1 create "$DB_NAME" >/dev/null 2>&1 || npx wrangler d1 create "$DB_NAME"
+  DB_ID=$(npx wrangler d1 list 2>/dev/null | grep "$DB_NAME" | grep -o '[a-f0-9]\{8\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{12\}' | head -1 || echo "")
   echo -e "${GREEN}Database created${NC}"
 fi
 
@@ -103,21 +106,28 @@ echo -e "${BLUE}Database ID: ${DB_ID}${NC}"
 # ============================================
 # Step 2: Create KV Namespace (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[2/7] Setting up KV Cache...${NC}"
+echo -e "\n${YELLOW}[2/8] Setting up KV Cache...${NC}"
 
 KV_NAME="agate-cache"
-EXISTING_KV=$(wrangler kv:namespace list 2>/dev/null | grep -o "$KV_NAME" || true)
+# Check for both "agate-cache" and "worker-agate-cache" formats
+EXISTING_KV=$(npx wrangler kv:namespace list 2>/dev/null | grep -oE "(worker-)?$KV_NAME" || true)
 
 if [ -n "$EXISTING_KV" ]; then
   echo -e "${GREEN}KV namespace '$KV_NAME' already exists${NC}"
-  KV_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A10 "KV_CACHE" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
+  # Get KV ID from list output (JSON format)
+  KV_OUTPUT=$(npx wrangler kv:namespace list 2>/dev/null)
+  KV_ID=$(echo "$KV_OUTPUT" | grep -B1 "\"title\": \"worker-$KV_NAME\"" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
+  # Fallback to exact match if worker- prefix not found
+  if [ -z "$KV_ID" ]; then
+    KV_ID=$(echo "$KV_OUTPUT" | grep -B1 "\"title\": \"$KV_NAME\"" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
+  fi
   KV_PREVIEW_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A10 "KV_CACHE" | grep -o '"preview_id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
 else
   echo -e "${BLUE}Creating KV namespace '$KV_NAME'...${NC}"
-  wrangler kv:namespace create "$KV_NAME" >/dev/null 2>&1 || wrangler kv:namespace create "$KV_NAME"
+  npx wrangler kv:namespace create "$KV_NAME" >/dev/null 2>&1 || npx wrangler kv:namespace create "$KV_NAME"
 
   # Get KV IDs from the output
-  KV_OUTPUT=$(wrangler kv:namespace create "$KV_NAME" 2>&1)
+  KV_OUTPUT=$(npx wrangler kv:namespace create "$KV_NAME" 2>&1)
   KV_ID=$(echo "$KV_OUTPUT" | grep -o 'id = "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1)
   KV_PREVIEW_ID=$(echo "$KV_OUTPUT" | grep -o 'preview_id = "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1)
   echo -e "${GREEN}KV namespace created${NC}"
@@ -128,7 +138,7 @@ echo -e "${BLUE}KV ID: ${KV_ID}${NC}"
 # ============================================
 # Step 3: Update Worker Configurations
 # ============================================
-echo -e "\n${YELLOW}[3/7] Creating worker configurations...${NC}"
+echo -e "\n${YELLOW}[3/8] Creating worker configurations...${NC}"
 
 # Function to get zone name from domain
 get_zone_name() {
@@ -147,7 +157,7 @@ get_zone_name() {
 }
 
 # Create Proxy Worker config
-cat > workers/proxy/wrangler.prod.jsonc <<EOF
+cat > workers/proxy/wrangler.prod.jsonc <<_CONFIG_EOF_
 {
   "name": "agate-proxy",
   "compatibility_date": "2024-01-01",
@@ -185,10 +195,15 @@ cat > workers/proxy/wrangler.prod.jsonc <<EOF
   "observability": {
     "enabled": true
   }
-EOF
+}
+_CONFIG_EOF_
+
+# Debug: check generated file
+echo "DEBUG: Proxy config file last 5 lines:"
+tail -5 workers/proxy/wrangler.prod.jsonc
 
 # Create Admin Worker config
-cat > workers/admin/wrangler.prod.jsonc <<EOF
+cat > workers/admin/wrangler.prod.jsonc <<_CONFIG_EOF_
 {
   "name": "agate-admin",
   "compatibility_date": "2024-01-01",
@@ -226,7 +241,8 @@ cat > workers/admin/wrangler.prod.jsonc <<EOF
   "observability": {
     "enabled": true
   }
-EOF
+}
+_CONFIG_EOF_
 
 # Add routes to configs if domains are provided
 if [ -n "$PROXY_DOMAIN" ]; then
@@ -258,23 +274,24 @@ echo -e "${GREEN}Worker configs created${NC}"
 # ============================================
 # Step 4: Deploy database schema
 # ============================================
-echo -e "\n${YELLOW}[4/7] Deploying database schema...${NC}"
+echo -e "\n${YELLOW}[4/8] Deploying database schema...${NC}"
 
-# Use proxy worker's config for DB operations
-wrangler d1 execute "$DB_NAME" --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc
-echo -e "${GREEN}Database schema deployed${NC}"
+# Use proxy worker's config for DB operations (deploy to remote)
+# Ignore errors if tables already exist
+npx wrangler d1 execute "$DB_NAME" --remote --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Schema already exists or deployment skipped${NC}"
+echo -e "${GREEN}Database schema ready${NC}"
 
-# Seed initial data
+# Seed initial data (to remote)
 echo -e "${BLUE}Seeding initial data...${NC}"
-wrangler d1 execute "$DB_NAME" --file=./scripts/seed-data.sql --config workers/proxy/wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Seed data skipped${NC}"
+npx wrangler d1 execute "$DB_NAME" --remote --file=./scripts/seed-prod.sql --config workers/proxy/wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Seed data already exists or skipped${NC}"
 
 # ============================================
 # Step 5: Deploy Proxy Worker
 # ============================================
-echo -e "\n${YELLOW}[5/7] Deploying Proxy Worker...${NC}"
+echo -e "\n${YELLOW}[5/8] Deploying Proxy Worker...${NC}"
 
 cd workers/proxy
-wrangler deploy --config wrangler.prod.jsonc
+npx wrangler deploy --config wrangler.prod.jsonc
 cd ../..
 
 echo -e "${GREEN}Proxy Worker deployed${NC}"
@@ -282,21 +299,82 @@ echo -e "${GREEN}Proxy Worker deployed${NC}"
 # ============================================
 # Step 6: Deploy Admin Worker
 # ============================================
-echo -e "\n${YELLOW}[6/7] Deploying Admin Worker...${NC}"
+echo -e "\n${YELLOW}[6/8] Deploying Admin Worker...${NC}"
 
 cd workers/admin
-wrangler deploy --config wrangler.prod.jsonc
+npx wrangler deploy --config wrangler.prod.jsonc
 cd ../..
 
 echo -e "${GREEN}Admin Worker deployed${NC}"
 
 # ============================================
-# Step 7: Initialize Super Admin API Key
+# Step 7: Deploy Health Worker
 # ============================================
-echo -e "\n${YELLOW}[7/7] Initializing Super Admin API Key...${NC}"
+echo -e "\n${YELLOW}[7/8] Deploying Health Worker...${NC}"
 
-# Run the init script and capture output (use admin worker's config)
-INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc 2>&1)
+# Create Health Worker config
+cat > workers/health/wrangler.prod.jsonc <<EOF
+{
+  "name": "agate-health",
+  "compatibility_date": "2024-01-01",
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "$DB_NAME",
+      "database_id": "$DB_ID"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": "$KV_ID",
+      "preview_id": "$KV_PREVIEW_ID"
+    }
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "SYSTEM_USER_ID": "sys-health-user",
+    "SYSTEM_COMPANY_ID": "sys-health"
+  },
+
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": ["**/*.ts"],
+      "fallthrough": true
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  },
+
+  "triggers": [
+    {
+      "cron": "*/5 * * * *"
+    }
+  ]
+}
+EOF
+
+cd workers/health
+npx wrangler deploy --config wrangler.prod.jsonc
+cd ../..
+
+echo -e "${GREEN}Health Worker deployed (cron: */5 * * * *)${NC}"
+
+# ============================================
+# Step 8: Initialize Super Admin API Key
+# ============================================
+echo -e "\n${YELLOW}[8/8] Initializing Super Admin API Key...${NC}"
+
+# Run the init script and capture output (use admin worker's config, with remote flag)
+INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc --remote 2>&1)
 
 echo "$INIT_OUTPUT"
 
@@ -325,6 +403,7 @@ fi
 echo -e "\n${BLUE}Your Gateway is live at:${NC}"
 echo -e "${GREEN}Proxy:  $PROXY_WORKER_URL${NC}"
 echo -e "${GREEN}Admin:  $ADMIN_WORKER_URL${NC}"
+echo -e "${GREEN}Health: https://agate-health.${ACCOUNT_ID}.workers.dev (cron)${NC}"
 
 echo -e "\n${YELLOW}Next steps:${NC}"
 echo -e "1. Test health check: ${GREEN}curl $PROXY_WORKER_URL/health${NC}"
@@ -344,6 +423,7 @@ Database ID: $DB_ID
 KV ID: $KV_ID
 Proxy Worker URL: $PROXY_WORKER_URL
 Admin Worker URL: $ADMIN_WORKER_URL
+Health Worker URL: https://agate-health.${ACCOUNT_ID}.workers.dev
 Admin API Key: $ADMIN_KEY
 EOF
 

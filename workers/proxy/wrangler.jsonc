@@ -7,7 +7,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ai-gateway-db",
+      "database_name": "agate-db",
       "database_id": "local"
     }
   ],

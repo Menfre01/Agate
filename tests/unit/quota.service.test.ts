@@ -17,6 +17,7 @@ vi.mock("@/db/queries.js", () => ({
   resetDepartmentQuota: vi.fn(),
   resetCompanyQuota: vi.fn(),
   deductApiKeyQuota: vi.fn(),
+  deductApiKeyQuotaWithBonus: vi.fn(),
   deductUserQuota: vi.fn(),
   deductDepartmentDailyQuota: vi.fn(),
   deductDepartmentMixedQuota: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("@/db/queries.js", () => ({
   updateDepartment: vi.fn(),
   updateApiKey: vi.fn(),
   addApiKeyBonus: vi.fn(),
+  cleanupExpiredBonus: vi.fn(),
 }));
 
 import * as queries from "@/db/queries.js";
@@ -46,6 +48,7 @@ describe("QuotaService", () => {
     quota_daily: 10000,
     quota_used: 1000,
     quota_bonus: 500,
+    quota_bonus_used: 0,
     quota_bonus_expiry: Date.now() + 86400000,
     is_unlimited: false,
     is_active: true,
@@ -66,6 +69,7 @@ describe("QuotaService", () => {
     quota_daily: 10000,
     quota_used: 500,
     is_active: true,
+    is_unlimited: false,
     last_reset_at: Date.now(), // Use current time to avoid reset logic
     created_at: Date.now(),
     updated_at: Date.now(),
@@ -113,6 +117,7 @@ describe("QuotaService", () => {
     vi.mocked(queries.resetDepartmentQuota).mockResolvedValue(mockDepartment);
     vi.mocked(queries.resetCompanyQuota).mockResolvedValue(mockCompany);
     vi.mocked(queries.deductApiKeyQuota).mockResolvedValue(mockApiKey);
+    vi.mocked(queries.deductApiKeyQuotaWithBonus).mockResolvedValue(mockApiKey);
     vi.mocked(queries.deductUserQuota).mockResolvedValue(mockUser);
     vi.mocked(queries.deductDepartmentDailyQuota).mockResolvedValue(mockDepartment);
     vi.mocked(queries.deductDepartmentMixedQuota).mockResolvedValue(mockDepartment);
@@ -123,6 +128,7 @@ describe("QuotaService", () => {
     vi.mocked(queries.updateDepartment).mockResolvedValue(mockDepartment);
     vi.mocked(queries.updateApiKey).mockResolvedValue(mockApiKey);
     vi.mocked(queries.addApiKeyBonus).mockResolvedValue(mockApiKey);
+    vi.mocked(queries.cleanupExpiredBonus).mockResolvedValue(false);
 
     quotaService = new QuotaService(mockEnv);
   });
@@ -174,6 +180,7 @@ describe("QuotaService", () => {
       const expiredBonusKey = {
         ...mockApiKey,
         quota_bonus: 1000,
+        quota_bonus_used: 0,
         quota_bonus_expiry: Date.now() - 1000, // Expired
       };
 
@@ -201,6 +208,7 @@ describe("QuotaService", () => {
         quota_daily: 100,
         quota_used: 90,
         quota_bonus: 0,
+        quota_bonus_used: 0,
         last_reset_at: Date.now(),
       };
 
@@ -515,6 +523,70 @@ describe("QuotaService", () => {
         )
       ).rejects.toThrow("Company not found");
     });
+
+    it("should deduct from API key daily quota when sufficient", async () => {
+      const keyWithDaily = {
+        ...mockApiKey,
+        quota_daily: 10000,
+        quota_used: 1000,
+        quota_bonus: 5000,
+        quota_bonus_used: 0,
+      };
+      vi.mocked(queries.deductApiKeyQuotaWithBonus).mockResolvedValue(keyWithDaily);
+
+      const result = await quotaService.deductQuota(
+        "key-123",
+        "user-123",
+        "dept-123",
+        "company-123",
+        1000
+      );
+
+      expect(result.updated.apiKey.quota_used).toBe(1000); // Mock returns original value
+    });
+
+    it("should deduct from API key bonus when daily insufficient", async () => {
+      const keyLowDaily = {
+        ...mockApiKey,
+        quota_daily: 100,
+        quota_used: 90,
+        quota_bonus: 5000,
+        quota_bonus_used: 0,
+      };
+      vi.mocked(queries.deductApiKeyQuotaWithBonus).mockResolvedValue(keyLowDaily);
+
+      const result = await quotaService.deductQuota(
+        "key-123",
+        "user-123",
+        "dept-123",
+        "company-123",
+        50
+      );
+
+      // Should have called deductApiKeyQuotaWithBonus which handles the logic
+      expect(queries.deductApiKeyQuotaWithBonus).toHaveBeenCalled();
+    });
+
+    it("should return quota_bonus_used in deduction result", async () => {
+      const keyWithBonusUsed = {
+        ...mockApiKey,
+        quota_daily: 100,
+        quota_used: 100,
+        quota_bonus: 5000,
+        quota_bonus_used: 200,
+      };
+      vi.mocked(queries.deductApiKeyQuotaWithBonus).mockResolvedValue(keyWithBonusUsed);
+
+      const result = await quotaService.deductQuota(
+        "key-123",
+        "user-123",
+        "dept-123",
+        "company-123",
+        50
+      );
+
+      expect(result.updated.apiKey.quota_bonus_used).toBe(200);
+    });
   });
 
   describe("recordQuotaChange", () => {
@@ -719,7 +791,7 @@ describe("QuotaService", () => {
     });
 
     it("should add bonus to api_key", async () => {
-      const updatedKey = { ...mockApiKey, quota_bonus: 1500 };
+      const updatedKey = { ...mockApiKey, quota_bonus: 1500, quota_bonus_used: 0 };
       vi.mocked(queries.addApiKeyBonus).mockResolvedValue(updatedKey);
 
       await expect(
@@ -729,7 +801,7 @@ describe("QuotaService", () => {
 
     it("should add bonus with expiry to api_key", async () => {
       const expiry = Date.now() + 86400000;
-      const updatedKey = { ...mockApiKey, quota_bonus: 1500, quota_bonus_expiry: expiry };
+      const updatedKey = { ...mockApiKey, quota_bonus: 1500, quota_bonus_used: 0, quota_bonus_expiry: expiry };
       vi.mocked(queries.addApiKeyBonus).mockResolvedValue(updatedKey);
 
       await quotaService.addBonusQuota("api_key", "key-123", 500, expiry);
@@ -804,6 +876,39 @@ describe("QuotaService", () => {
       await expect(
         quotaService.getQuotaInfo("api_key", "non-existent")
       ).rejects.toThrow("API Key not found");
+    });
+  });
+
+  describe("cleanupExpiredBonus", () => {
+    it("should call cleanupExpiredBonus during checkQuota", async () => {
+      vi.mocked(queries.cleanupExpiredBonus).mockClear();
+
+      await quotaService.checkQuota(
+        mockApiKey,
+        mockUser,
+        mockDepartment,
+        mockCompany,
+        100
+      );
+
+      expect(queries.cleanupExpiredBonus).toHaveBeenCalledWith(expect.anything(), "key-123");
+    });
+
+    it("should not call cleanupExpiredBonus for unlimited keys", async () => {
+      vi.mocked(queries.cleanupExpiredBonus).mockClear();
+
+      const unlimitedKey = { ...mockApiKey, is_unlimited: true };
+      vi.mocked(queries.getApiKey).mockResolvedValue(unlimitedKey);
+
+      await quotaService.checkQuota(
+        unlimitedKey,
+        mockUser,
+        mockDepartment,
+        mockCompany,
+        100
+      );
+
+      expect(queries.cleanupExpiredBonus).not.toHaveBeenCalled();
     });
   });
 });

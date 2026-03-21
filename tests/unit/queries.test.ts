@@ -184,6 +184,7 @@ describe("Queries - Database Layer", () => {
       quota_daily: 1000,
       quota_used: 100,
       quota_bonus: 0,
+      quota_bonus_used: 0,
       quota_bonus_expiry: null,
       is_unlimited: false,
       is_active: true,

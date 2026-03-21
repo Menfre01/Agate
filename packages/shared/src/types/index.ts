@@ -104,6 +104,8 @@ export interface User {
   quota_used: number;
   /** Whether user is active */
   is_active: boolean;
+  /** Whether user has unlimited quota (bypasses all quota checks) */
+  is_unlimited: boolean;
   /** Last quota reset timestamp */
   last_reset_at: number | null;
   /** Creation timestamp */
@@ -278,6 +280,8 @@ export interface ApiKey {
   quota_used: number;
   /** Bonus quota amount */
   quota_bonus: number;
+  /** Amount used from bonus quota */
+  quota_bonus_used: number;
   /** Bonus quota expiry timestamp */
   quota_bonus_expiry: number | null;
   /** Whether key has unlimited quota */
@@ -514,6 +518,8 @@ export interface ApiKeyResponse {
   quota_used: number;
   /** Bonus quota */
   quota_bonus: number;
+  /** Bonus quota used */
+  quota_bonus_used: number;
   /** Whether key is unlimited */
   is_unlimited: boolean;
   /** Whether key is active */
@@ -977,6 +983,8 @@ export interface UserResponse {
   quota_used: number;
   /** Whether user is active */
   is_active: boolean;
+  /** Whether user has unlimited quota */
+  is_unlimited: boolean;
   /** API Key count */
   api_key_count: number;
   /** Creation timestamp */

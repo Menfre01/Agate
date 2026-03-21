@@ -87,6 +87,7 @@ export interface InternalUpdateUserDto {
   role?: string;
   quota_daily?: number;
   is_active?: boolean;
+  is_unlimited?: boolean;
 }
 
 export interface InternalCreateProviderDto {
@@ -593,8 +594,8 @@ export class Queries {
       .prepare(
         `INSERT INTO users (
           id, email, name, company_id, department_id, role, quota_daily, quota_used,
-          is_active, last_reset_at, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`
+          is_active, is_unlimited, last_reset_at, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
       )
       .bind(
         data.id,
@@ -606,6 +607,7 @@ export class Queries {
         data.quota_daily ?? 0,
         0,
         true,
+        false,
         null,
         now,
         now
@@ -654,6 +656,10 @@ export class Queries {
     if (data.is_active !== undefined) {
       updates.push(`is_active = ?${paramIndex++}`);
       params.push(data.is_active ? 1 : 0);
+    }
+    if (data.is_unlimited !== undefined) {
+      updates.push(`is_unlimited = ?${paramIndex++}`);
+      params.push(data.is_unlimited ? 1 : 0);
     }
 
     updates.push(`updated_at = ?${paramIndex++}`);
@@ -1307,10 +1313,10 @@ export class Queries {
       .prepare(
         `INSERT INTO api_keys (
           id, key_hash, key_prefix, user_id, company_id, department_id, name,
-          quota_daily, quota_used, quota_bonus, quota_bonus_expiry,
+          quota_daily, quota_used, quota_bonus, quota_bonus_used, quota_bonus_expiry,
           is_unlimited, is_active, last_reset_at, last_used_at, expires_at,
           created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)`
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)`
       )
       .bind(
         data.id,
@@ -1321,6 +1327,7 @@ export class Queries {
         data.department_id ?? null,
         data.name ?? null,
         data.quota_daily ?? 0,
+        0,
         0,
         0,
         null,
@@ -1443,6 +1450,40 @@ export class Queries {
     }
 
     return this.getApiKey(id) as Promise<ApiKey>;
+  }
+
+  /**
+   * Clean up expired bonus quota for an API key.
+   *
+   * If the bonus has expired, resets quota_bonus, quota_bonus_used, and quota_bonus_expiry to 0/null.
+   *
+   * @param id - API key ID
+   * @returns true if cleanup was performed, false if not expired
+   */
+  async cleanupExpiredBonus(id: string): Promise<boolean> {
+    const key = await this.db
+      .prepare('SELECT quota_bonus_expiry FROM api_keys WHERE id = ?1')
+      .bind(id)
+      .first<{ quota_bonus_expiry: number | null }>();
+
+    if (!key || !key.quota_bonus_expiry) {
+      return false; // No expiry set, nothing to clean
+    }
+
+    const now = Date.now();
+    if (key.quota_bonus_expiry > now) {
+      return false; // Not expired yet
+    }
+
+    // Bonus has expired, clean it up
+    const result = await this.db
+      .prepare(
+        'UPDATE api_keys SET quota_bonus = 0, quota_bonus_used = 0, quota_bonus_expiry = NULL, updated_at = ?1 WHERE id = ?2'
+      )
+      .bind(now, id)
+      .run();
+
+    return result.success;
   }
 
   /**
@@ -1955,6 +1996,7 @@ export const addApiKeyBonus = (
   expiry?: number
 ) => getQueries(db).addApiKeyBonus(id, amountOrOptions, expiry);
 export const resetApiKeyQuota = (db: D1Database, id: string) => getQueries(db).resetApiKeyQuota(id);
+export const cleanupExpiredBonus = (db: D1Database, id: string) => getQueries(db).cleanupExpiredBonus(id);
 
 // Usage operations
 export const createUsageLog = (db: D1Database, data: InternalCreateUsageLogDto) =>
@@ -2034,36 +2076,96 @@ export const deductApiKeyQuota = async (db: D1Database, apiKeyId: string, amount
   if (!result) throw new Error(`API Key not found after deduction: ${apiKeyId}`);
   return result;
 };
+
+/**
+ * Deducts from API Key quota with bonus fallback.
+ *
+ * Priority: Daily quota first, then bonus quota.
+ *
+ * @param db - D1 Database
+ * @param apiKeyId - API Key ID
+ * @param amount - Total amount to deduct
+ * @returns Updated API Key
+ */
+export const deductApiKeyQuotaWithBonus = async (db: D1Database, apiKeyId: string, amount: number): Promise<ApiKey> => {
+  const key = await db.prepare('SELECT * FROM api_keys WHERE id = ?1').bind(apiKeyId).first<ApiKey>();
+  if (!key) throw new Error(`API Key not found: ${apiKeyId}`);
+
+  const dailyRemaining = key.quota_daily - key.quota_used;
+  let dailyDeduction = 0;
+  let bonusDeduction = 0;
+
+  if (dailyRemaining >= amount) {
+    // Daily quota is sufficient
+    dailyDeduction = amount;
+  } else {
+    // Use all remaining daily, then deduct from bonus
+    dailyDeduction = dailyRemaining;
+    bonusDeduction = amount - dailyRemaining;
+  }
+
+  // Build update query dynamically based on what needs to be deducted
+  const updates: string[] = [];
+  const params: (string | number)[] = [];
+  let paramIndex = 1;
+
+  if (dailyDeduction > 0) {
+    updates.push(`quota_used = quota_used + ?${paramIndex++}`);
+    params.push(dailyDeduction);
+  }
+
+  if (bonusDeduction > 0) {
+    updates.push(`quota_bonus_used = quota_bonus_used + ?${paramIndex++}`);
+    params.push(bonusDeduction);
+  }
+
+  updates.push(`updated_at = ?${paramIndex++}`);
+  params.push(Date.now());
+  params.push(apiKeyId);
+
+  const query = `UPDATE api_keys SET ${updates.join(', ')} WHERE id = ?${paramIndex}`;
+  await db.prepare(query).bind(...params).run();
+
+  const result = await db.prepare('SELECT * FROM api_keys WHERE id = ?1').bind(apiKeyId).first<ApiKey>();
+  if (!result) throw new Error(`API Key not found after deduction: ${apiKeyId}`);
+  return result;
+};
+
 export const deductUserQuota = async (db: D1Database, userId: string, amount: number): Promise<User> => {
-  await db.prepare('UPDATE users SET quota_used = quota_used + ?1, updated_at = ?2 WHERE id = ?3')
+  // Use MIN to prevent quota_used from exceeding quota_daily (overflow protection)
+  await db.prepare('UPDATE users SET quota_used = MIN(quota_daily, quota_used + ?1), updated_at = ?2 WHERE id = ?3')
     .bind(amount, Date.now(), userId).run();
   const result = await db.prepare('SELECT * FROM users WHERE id = ?1').bind(userId).first<User>();
   if (!result) throw new Error(`User not found after deduction: ${userId}`);
   return result;
 };
 export const deductDepartmentDailyQuota = async (db: D1Database, departmentId: string, amount: number): Promise<Department> => {
-  await db.prepare('UPDATE departments SET daily_used = daily_used + ?1, updated_at = ?2 WHERE id = ?3')
+  // Use MIN to prevent daily_used from exceeding quota_daily (overflow protection)
+  await db.prepare('UPDATE departments SET daily_used = MIN(quota_daily, daily_used + ?1), updated_at = ?2 WHERE id = ?3')
     .bind(amount, Date.now(), departmentId).run();
   const result = await db.prepare('SELECT * FROM departments WHERE id = ?1').bind(departmentId).first<Department>();
   if (!result) throw new Error(`Department not found after deduction: ${departmentId}`);
   return result;
 };
 export const deductDepartmentMixedQuota = async (db: D1Database, departmentId: string, dailyAmount: number, poolAmount: number): Promise<Department> => {
-  await db.prepare('UPDATE departments SET quota_used = quota_used + ?1, daily_used = daily_used + ?2, updated_at = ?3 WHERE id = ?4')
+  // Use MIN to prevent overflow (daily_used <= quota_daily, quota_used <= quota_pool)
+  await db.prepare('UPDATE departments SET quota_used = MIN(quota_pool, quota_used + ?1), daily_used = MIN(quota_daily, daily_used + ?2), updated_at = ?3 WHERE id = ?4')
     .bind(poolAmount, dailyAmount, Date.now(), departmentId).run();
   const result = await db.prepare('SELECT * FROM departments WHERE id = ?1').bind(departmentId).first<Department>();
   if (!result) throw new Error(`Department not found after deduction: ${departmentId}`);
   return result;
 };
 export const deductCompanyDailyQuota = async (db: D1Database, companyId: string, amount: number): Promise<Company> => {
-  await db.prepare('UPDATE companies SET daily_used = daily_used + ?1, updated_at = ?2 WHERE id = ?3')
+  // Use MIN to prevent daily_used from exceeding quota_daily (overflow protection)
+  await db.prepare('UPDATE companies SET daily_used = MIN(quota_daily, daily_used + ?1), updated_at = ?2 WHERE id = ?3')
     .bind(amount, Date.now(), companyId).run();
   const result = await db.prepare('SELECT * FROM companies WHERE id = ?1').bind(companyId).first<Company>();
   if (!result) throw new Error(`Company not found after deduction: ${companyId}`);
   return result;
 };
 export const deductCompanyMixedQuota = async (db: D1Database, companyId: string, dailyAmount: number, poolAmount: number): Promise<Company> => {
-  await db.prepare('UPDATE companies SET quota_used = quota_used + ?1, daily_used = daily_used + ?2, updated_at = ?3 WHERE id = ?4')
+  // Use MIN to prevent overflow (daily_used <= quota_daily, quota_used <= quota_pool)
+  await db.prepare('UPDATE companies SET quota_used = MIN(quota_pool, quota_used + ?1), daily_used = MIN(quota_daily, daily_used + ?2), updated_at = ?3 WHERE id = ?4')
     .bind(poolAmount, dailyAmount, Date.now(), companyId).run();
   const result = await db.prepare('SELECT * FROM companies WHERE id = ?1').bind(companyId).first<Company>();
   if (!result) throw new Error(`Company not found after deduction: ${companyId}`);
