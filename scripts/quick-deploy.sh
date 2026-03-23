@@ -2,7 +2,7 @@
 # Agate Quick Deploy Script (Split Worker Architecture)
 #
 # Fast deployment to Cloudflare Workers with minimal configuration.
-# Deploys both Proxy and Admin workers.
+# Deploys Proxy, Admin, Health workers and Admin frontend (Pages).
 #
 # Usage: ./scripts/quick-deploy.sh [proxy_domain] [admin_domain] [account_id]
 #
@@ -32,7 +32,7 @@ if [ -n "$PROXY_DOMAIN" ] && [ -z "$ADMIN_DOMAIN" ] && [[ ! "$PROXY_DOMAIN" =~ \
 fi
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}Agate Quick Deploy (Split Workers)${NC}"
+echo -e "${BLUE}Agate Quick Deploy (Workers + Pages)${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # Check if user is logged in to wrangler
@@ -84,20 +84,23 @@ KV_PREVIEW_ID=""
 echo -e "\n${YELLOW}[1/8] Setting up D1 Database...${NC}"
 
 # Check if database already exists
-EXISTING_DB=$(npx wrangler d1 list 2>/dev/null | grep -o "$DB_NAME" || true)
+D1_LIST=$(npx wrangler d1 list 2>/dev/null)
+EXISTING_DB=$(echo "$D1_LIST" | grep -o "$DB_NAME" || true)
 
 if [ -n "$EXISTING_DB" ]; then
   echo -e "${GREEN}Database '$DB_NAME' already exists${NC}"
-  # Get existing database ID (UUID format)
-  DB_ID=$(npx wrangler d1 list 2>/dev/null | grep "$DB_NAME" | grep -o '[a-f0-9]\{8\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{12\}' | head -1 || echo "")
+  # Get existing database ID (UUID format) - extract from table output
+  DB_ID=$(echo "$D1_LIST" | grep "$DB_NAME" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 || echo "")
   if [ -z "$DB_ID" ]; then
-    # Try alternate method to get ID
-    DB_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A5 "$DB_NAME" | grep "database_id" | grep -o '[a-f0-9]\{8\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{12\}' | head -1 || echo "")
+    # Try alternate method to get ID from config
+    DB_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A5 "$DB_NAME" | grep "database_id" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 || echo "")
   fi
 else
   echo -e "${BLUE}Creating D1 database '$DB_NAME'...${NC}"
   npx wrangler d1 create "$DB_NAME" >/dev/null 2>&1 || npx wrangler d1 create "$DB_NAME"
-  DB_ID=$(npx wrangler d1 list 2>/dev/null | grep "$DB_NAME" | grep -o '[a-f0-9]\{8\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{4\}-[a-f0-9]\{12\}' | head -1 || echo "")
+  # Refresh list and get ID
+  D1_LIST=$(npx wrangler d1 list 2>/dev/null)
+  DB_ID=$(echo "$D1_LIST" | grep "$DB_NAME" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 || echo "")
   echo -e "${GREEN}Database created${NC}"
 fi
 
@@ -109,18 +112,22 @@ echo -e "${BLUE}Database ID: ${DB_ID}${NC}"
 echo -e "\n${YELLOW}[2/8] Setting up KV Cache...${NC}"
 
 KV_NAME="agate-cache"
+# Get KV list as JSON
+KV_OUTPUT=$(npx wrangler kv:namespace list 2>/dev/null)
+
 # Check for both "agate-cache" and "worker-agate-cache" formats
-EXISTING_KV=$(npx wrangler kv:namespace list 2>/dev/null | grep -oE "(worker-)?$KV_NAME" || true)
+if echo "$KV_OUTPUT" | grep -q '"title": "worker-'"$KV_NAME"'"'; then
+  EXISTING_KV="worker-$KV_NAME"
+elif echo "$KV_OUTPUT" | grep -q '"title": "'"$KV_NAME"'"'; then
+  EXISTING_KV="$KV_NAME"
+else
+  EXISTING_KV=""
+fi
 
 if [ -n "$EXISTING_KV" ]; then
   echo -e "${GREEN}KV namespace '$KV_NAME' already exists${NC}"
-  # Get KV ID from list output (JSON format)
-  KV_OUTPUT=$(npx wrangler kv:namespace list 2>/dev/null)
-  KV_ID=$(echo "$KV_OUTPUT" | grep -B1 "\"title\": \"worker-$KV_NAME\"" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
-  # Fallback to exact match if worker- prefix not found
-  if [ -z "$KV_ID" ]; then
-    KV_ID=$(echo "$KV_OUTPUT" | grep -B1 "\"title\": \"$KV_NAME\"" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
-  fi
+  # Extract ID from JSON output
+  KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1)
   KV_PREVIEW_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A10 "KV_CACHE" | grep -o '"preview_id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
 else
   echo -e "${BLUE}Creating KV namespace '$KV_NAME'...${NC}"
@@ -354,11 +361,9 @@ cat > workers/health/wrangler.prod.jsonc <<EOF
     "enabled": true
   },
 
-  "triggers": [
-    {
-      "cron": "*/5 * * * *"
-    }
-  ]
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
 }
 EOF
 
@@ -369,9 +374,31 @@ cd ../..
 echo -e "${GREEN}Health Worker deployed (cron: */5 * * * *)${NC}"
 
 # ============================================
-# Step 8: Initialize Super Admin API Key
+# Step 8: Deploy Admin Frontend (Pages)
 # ============================================
-echo -e "\n${YELLOW}[8/8] Initializing Super Admin API Key...${NC}"
+echo -e "\n${YELLOW}[8/9] Deploying Admin Frontend (Pages)...${NC}"
+
+# Build the frontend
+echo -e "${BLUE}Building frontend...${NC}"
+cd pages
+pnpm build --silent 2>/dev/null || pnpm build
+
+# Deploy to Cloudflare Pages
+echo -e "${BLUE}Deploying to Cloudflare Pages...${NC}"
+PAGES_OUTPUT=$(npx wrangler pages deploy dist --project-name=agate-admin 2>&1)
+PAGES_URL=$(echo "$PAGES_OUTPUT" | grep -o 'https://[^ ]*\.pages\.dev' | head -1)
+
+cd ../..
+
+echo -e "${GREEN}Admin Frontend deployed${NC}"
+if [ -n "$PAGES_URL" ]; then
+  echo -e "${BLUE}Pages URL: ${PAGES_URL}${NC}"
+fi
+
+# ============================================
+# Step 9: Initialize Super Admin API Key
+# ============================================
+echo -e "\n${YELLOW}[9/9] Initializing Super Admin API Key...${NC}"
 
 # Run the init script and capture output (use admin worker's config, with remote flag)
 INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc --remote 2>&1)
@@ -404,17 +431,29 @@ echo -e "\n${BLUE}Your Gateway is live at:${NC}"
 echo -e "${GREEN}Proxy:  $PROXY_WORKER_URL${NC}"
 echo -e "${GREEN}Admin:  $ADMIN_WORKER_URL${NC}"
 echo -e "${GREEN}Health: https://agate-health.${ACCOUNT_ID}.workers.dev (cron)${NC}"
+if [ -n "$PAGES_URL" ]; then
+  echo -e "${GREEN}Frontend: $PAGES_URL${NC}"
+else
+  echo -e "${GREEN}Frontend: https://agate-admin.pages.dev${NC}"
+fi
 
 echo -e "\n${YELLOW}Next steps:${NC}"
 echo -e "1. Test health check: ${GREEN}curl $PROXY_WORKER_URL/health${NC}"
 echo -e "2. Test admin access: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $ADMIN_WORKER_URL/admin/keys${NC}"
 echo -e "3. Test proxy API: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $PROXY_WORKER_URL/v1/models${NC}"
-echo -e "4. Configure your custom domain DNS (if applicable)"
+echo -e "4. Open admin frontend: ${GREEN}https://agate-admin.pages.dev${NC}"
+echo -e "5. Configure your custom domain DNS (if applicable)"
 echo -e "\n${RED}IMPORTANT: Save your admin API key!${NC}"
 echo -e "${GREEN}$ADMIN_KEY${NC}"
 echo -e "${RED}It is also saved in .admin-api-key${NC}"
 
 # Save deployment info
+if [ -n "$PAGES_URL" ]; then
+  PAGES_INFO_URL="$PAGES_URL"
+else
+  PAGES_INFO_URL="https://agate-admin.pages.dev"
+fi
+
 cat > .deployment-info <<EOF
 # Deployment Information
 Date: $(date)
@@ -424,6 +463,7 @@ KV ID: $KV_ID
 Proxy Worker URL: $PROXY_WORKER_URL
 Admin Worker URL: $ADMIN_WORKER_URL
 Health Worker URL: https://agate-health.${ACCOUNT_ID}.workers.dev
+Admin Frontend URL: $PAGES_INFO_URL
 Admin API Key: $ADMIN_KEY
 EOF
 
