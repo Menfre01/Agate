@@ -144,22 +144,32 @@ describe("ProviderService", () => {
     });
   });
 
-  describe("consistentHashObject", () => {
-    it("should return consistent results for same input", () => {
-      const objects = [{ id: "a" }, { id: "b" }, { id: "c" }];
-      const seed = "test-seed";
+  describe("consistentHashSelect", () => {
+    it("should return consistent results for same input", async () => {
+      const nodes = [
+        { id: "a", is_active: true, health_status: "healthy" as const },
+        { id: "b", is_active: true, health_status: "healthy" as const },
+        { id: "c", is_active: true, health_status: "healthy" as const },
+      ];
+      const key = "test-key";
 
-      const result1 = (providerService as any).consistentHashObject(objects, seed);
-      const result2 = (providerService as any).consistentHashObject(objects, seed);
+      const { consistentHashSelect } = await import("@agate/shared/utils/consistent-hash.js");
+      const result1 = consistentHashSelect(nodes, key);
+      const result2 = consistentHashSelect(nodes, key);
 
       expect(result1).toBe(result2);
     });
 
-    it("should return different results for different seeds", () => {
-      const objects = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    it("should return different results for different keys", async () => {
+      const nodes = [
+        { id: "a", is_active: true, health_status: "healthy" as const },
+        { id: "b", is_active: true, health_status: "healthy" as const },
+        { id: "c", is_active: true, health_status: "healthy" as const },
+      ];
 
-      const result1 = (providerService as any).consistentHashObject(objects, "seed1");
-      const result2 = (providerService as any).consistentHashObject(objects, "seed2");
+      const { consistentHashSelect } = await import("@agate/shared/utils/consistent-hash.js");
+      const result1 = consistentHashSelect(nodes, "key1");
+      const result2 = consistentHashSelect(nodes, "key2");
 
       expect(result1).toBeDefined();
       expect(result2).toBeDefined();
@@ -183,10 +193,10 @@ describe("ProviderService", () => {
         api_key_encrypted: "encrypted",
         base_url: null,
         is_active: true,
-        priority: 0,
-        weight: 1,
         health_status: "healthy",
         last_health_check: null,
+        last_check_success: null,
+        consecutive_failures: 0,
         created_at: Date.now(),
         updated_at: Date.now(),
       };
@@ -283,9 +293,9 @@ describe("ProviderService", () => {
       ).rejects.toThrow(NotFoundError);
     });
 
-    it("should use default priority and weight", async () => {
+    it("should create credential with default values", async () => {
       const dto = {
-        credential_name: "Default Priority",
+        credential_name: "Default Credential",
         api_key: "sk_test_12345",
       };
 
@@ -304,36 +314,9 @@ describe("ProviderService", () => {
       expect(queries.createProviderCredential).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
-          priority: 0,
-          weight: 1,
           base_url: null,
-        })
-      );
-    });
-
-    it("should use custom priority and weight", async () => {
-      const dto = {
-        credential_name: "Custom Priority",
-        api_key: "sk_test_12345",
-        priority: 10,
-        weight: 5,
-      };
-
-      try {
-        await providerService.addCredential("provider-123", dto);
-      } catch (e) {
-        if (e instanceof Error && e.message.includes("Invalid")) {
-          // Expected in Node.js - skip this test
-          return;
-        }
-        throw e;
-      }
-
-      expect(queries.createProviderCredential).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          priority: 10,
-          weight: 5,
+          is_active: true,
+          health_status: "unknown",
         })
       );
     });
@@ -566,7 +549,7 @@ describe("ProviderService", () => {
 
       await expect(
         providerService.selectCredential("model-123", "api-key-456")
-      ).rejects.toThrow("No active credentials found for provider");
+      ).rejects.toThrow("No healthy nodes available");
     });
 
     it("should filter out unhealthy credentials", async () => {
@@ -575,7 +558,7 @@ describe("ProviderService", () => {
 
       await expect(
         providerService.selectCredential("model-123", "api-key-456")
-      ).rejects.toThrow("No active credentials found for provider");
+      ).rejects.toThrow("No healthy nodes available");
     });
 
     it("should filter out inactive credentials", async () => {
@@ -584,7 +567,7 @@ describe("ProviderService", () => {
 
       await expect(
         providerService.selectCredential("model-123", "api-key-456")
-      ).rejects.toThrow("No active credentials found for provider");
+      ).rejects.toThrow("No healthy nodes available");
     });
 
     it("should select from multiple healthy credentials consistently", async () => {

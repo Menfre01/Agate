@@ -243,8 +243,6 @@ describe("Providers API", () => {
       if (createResponse.status === 201) {
         const credentialData = createCredentialData({
           credential_name: "Production Key",
-          priority: 10,
-          weight: 5,
         });
 
         const response = await apiClient.addProviderCredential(
@@ -259,8 +257,6 @@ describe("Providers API", () => {
         expect(response.data.id).toBeDefined();
         expect(response.data.credential_name).toBe("Production Key");
         expect(response.data.is_active).toBe(true);
-        expect(response.data.priority).toBe(10);
-        expect(response.data.weight).toBe(5);
       }
     });
 

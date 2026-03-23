@@ -78,8 +78,12 @@ export interface DepartmentWithDetails extends Department {
 
 /**
  * User role enumeration
+ *
+ * - `admin`: Administrator with full access
+ * - `user`: Regular user
+ * - `system`: System user (e.g., for health checks), bypasses normal quota checks
  */
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'system';
 
 /**
  * User entity representing an individual user
@@ -226,7 +230,7 @@ export type QuotaChangeType = 'set' | 'add' | 'reset' | 'bonus';
 
 /**
  * ProviderCredential entity for storing encrypted API keys
- * @see prd.md Section 3.2.3
+ * @see PRD V2 Section 2.3.1
  */
 export interface ProviderCredential {
   /** Unique identifier */
@@ -241,14 +245,16 @@ export interface ProviderCredential {
   base_url: string | null;
   /** Whether credential is active */
   is_active: boolean;
-  /** Credential priority (higher = preferred) */
-  priority: number;
-  /** Load balancing weight */
-  weight: number;
+  /** Model ID to use for health checks (auto-selected from provider's models) */
+  health_check_model_id: string | null;
   /** Health status */
   health_status: HealthStatus;
   /** Last health check timestamp */
   last_health_check: number | null;
+  /** Last successful health check timestamp */
+  last_check_success: number | null;
+  /** Consecutive failure count (threshold: 3 = unhealthy) */
+  consecutive_failures: number;
   /** Creation timestamp */
   created_at: number;
   /** Last update timestamp */
@@ -610,10 +616,6 @@ export interface AddProviderCredentialDto {
   api_key: string;
   /** Custom base URL (optional, falls back to provider's base_url) */
   base_url?: string;
-  /** Credential priority (optional) */
-  priority?: number;
-  /** Load balancing weight (optional) */
-  weight?: number;
 }
 
 /**
@@ -628,14 +630,16 @@ export interface ProviderCredentialResponse {
   base_url: string | null;
   /** Whether credential is active */
   is_active: boolean;
-  /** Credential priority */
-  priority: number;
-  /** Load balancing weight */
-  weight: number;
+  /** Model ID for health checks */
+  health_check_model_id: string | null;
   /** Health status */
   health_status: HealthStatus;
   /** Last health check timestamp */
   last_health_check: number | null;
+  /** Last successful health check timestamp */
+  last_check_success: number | null;
+  /** Consecutive failure count */
+  consecutive_failures: number;
   /** Creation timestamp */
   created_at: number;
 }

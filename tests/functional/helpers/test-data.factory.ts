@@ -153,8 +153,6 @@ export function createCredentialData(
   return {
     credential_name: generateUniqueId("Test Credential"),
     api_key: `sk-test-${Date.now()}-${crypto.randomUUID().replace(/-/g, "")}`,
-    priority: 0,
-    weight: 1,
     ...overrides,
   };
 }

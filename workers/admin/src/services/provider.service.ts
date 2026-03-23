@@ -20,6 +20,7 @@ import type {
 import * as queries from "@agate/shared/db/queries.js";
 import { generateId } from "@agate/shared/utils/id-generator.js";
 import { NotFoundError, ValidationError } from "@agate/shared/utils/errors/index.js";
+import { consistentHashSelect, hashValues } from "@agate/shared/utils/consistent-hash.js";
 
 /**
  * Selected provider and credential for proxying.
@@ -233,10 +234,11 @@ export class ProviderService {
       credential_name: c.credential_name,
       base_url: c.base_url ?? null,
       is_active: Boolean(c.is_active),
-      priority: c.priority,
-      weight: c.weight,
+      health_check_model_id: c.health_check_model_id,
       health_status: c.health_status,
       last_health_check: c.last_health_check,
+      last_check_success: c.last_check_success,
+      consecutive_failures: c.consecutive_failures,
       created_at: c.created_at,
     }));
   }
@@ -289,10 +291,11 @@ export class ProviderService {
       api_key_encrypted: encryptedKey,
       base_url: dto.base_url ?? null,
       is_active: true,
-      priority: dto.priority ?? 0,
-      weight: dto.weight ?? 1,
+      health_check_model_id: null,
       health_status: "unknown",
       last_health_check: null,
+      last_check_success: null,
+      consecutive_failures: 0,
       created_at: now,
       updated_at: now,
     };
@@ -304,10 +307,11 @@ export class ProviderService {
       credential_name: credential.credential_name,
       base_url: credential.base_url,
       is_active: Boolean(credential.is_active),
-      priority: credential.priority,
-      weight: credential.weight,
+      health_check_model_id: credential.health_check_model_id,
       health_status: credential.health_status,
       last_health_check: credential.last_health_check,
+      last_check_success: credential.last_check_success,
+      consecutive_failures: credential.consecutive_failures,
       created_at: credential.created_at,
     };
   }
@@ -341,14 +345,15 @@ export class ProviderService {
   }
 
   /**
-   * Selects a credential for a model request using cross-provider load balancing.
+   * Selects a credential for a model request using consistent hash load balancing.
    *
-   * Selection process (two-layer):
+   * Selection process (two-layer, per PRD V2 Section 2.3):
    * 1. Get all active providers for the model (from model_providers)
-   * 2. Hash by apiKeyId + modelId to select provider
-   * 3. Hash by apiKeyId to select credential within provider
+   * 2. Select provider using consistent hash(api_key_id + model_id)
+   * 3. Get active & healthy credentials for selected provider
+   * 4. Select credential using consistent hash(api_key_id)
    *
-   * Base URL resolution: credential.base_url (if set) → provider.base_url (fallback)
+   * Cache-friendly: Same user + same model → Same provider → Same credential
    *
    * @param modelId - Model ID
    * @param apiKeyId - API Key ID for consistent hashing
@@ -366,10 +371,11 @@ export class ProviderService {
       throw new Error("No active providers found for model");
     }
 
-    // 2. Select provider using consistent hash (cross-provider load balancing)
-    const selectedProvider = this.consistentHashObject(
+    // 2. Select provider using consistent hash(api_key_id + model_id)
+    const providerHash = hashValues(apiKeyId, modelId);
+    const selectedProvider = consistentHashSelect(
       modelProviders,
-      `${apiKeyId}:${modelId}`
+      providerHash.toString()
     ) as { provider_id: string; is_active: boolean };
 
     // 3. Get provider details
@@ -380,16 +386,9 @@ export class ProviderService {
 
     // 4. Get active credentials for selected provider
     const credentials = await queries.listProviderCredentials(this.db, provider.id);
-    const activeCredentials = credentials.filter(
-      (c) => c.is_active && c.health_status !== "unhealthy"
-    );
 
-    if (activeCredentials.length === 0) {
-      throw new Error("No active credentials found for provider");
-    }
-
-    // 5. Select credential using consistent hash (credential-level load balancing)
-    const credential = this.consistentHashObject(activeCredentials, apiKeyId);
+    // 5. Select credential using consistent hash(api_key_id)
+    const credential = consistentHashSelect(credentials, apiKeyId);
 
     // 6. Decrypt API key
     const apiKey = await this.decryptApiKey(credential.api_key_encrypted);
@@ -482,43 +481,6 @@ export class ProviderService {
     );
 
     return new TextDecoder().decode(decrypted);
-  }
-
-  /**
-   * Consistent hash selection from an array of objects.
-   *
-   * @param objects - Array of objects to select from
-   * @param seed - Seed value for hashing
-   * @returns Selected object
-   */
-  private consistentHashObject<T>(objects: T[], seed: string): T {
-    let bestObject: T | undefined = objects[0];
-    let bestHash = BigInt(0);
-
-    for (const obj of objects) {
-      const combined = `${seed}:${JSON.stringify(obj)}`;
-      const hash = this.hashCode(combined);
-      if (hash > bestHash) {
-        bestHash = hash;
-        bestObject = obj;
-      }
-    }
-
-    return bestObject!;
-  }
-
-  /**
-   * Simple hash function for consistent hashing.
-   *
-   * @param str - String to hash
-   * @returns Hash value as BigInt
-   */
-  private hashCode(str: string): bigint {
-    let hash = 0n;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash * 31n + BigInt(str.charCodeAt(i))) & 0xffffffffn;
-    }
-    return hash;
   }
 
   /**

@@ -9,11 +9,12 @@
     "./types": "./src/types/index.ts",
     "./utils/crypto": "./src/utils/crypto.ts",
     "./utils/id-generator": "./src/utils/id-generator.ts",
+    "./utils/consistent-hash": "./src/utils/consistent-hash.ts",
     "./utils/errors": "./src/utils/errors/index.ts",
     "./middleware/logger": "./src/middleware/logger.ts",
     "./middleware/ratelimit": "./src/middleware/ratelimit.ts",
     "./db/queries": "./src/db/queries.ts",
-    "./services/cache": "./src/services/cache.service.ts"
+    "./services/cache.service": "./src/services/cache.service.ts"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20241127.0"

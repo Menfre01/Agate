@@ -39,8 +39,11 @@
     "test:functional:run:coverage": "TEST_CLEANUP=true vitest tests/functional --run --coverage",
     "smoke-test": "bash scripts/smoke-test.sh",
     "smoke-test:local": "bash scripts/smoke-test.sh http://localhost:8787 http://localhost:8788",
-    "db:migrate": "wrangler d1 execute ai-gateway-db --file=./packages/shared/src/db/schema.sql",
-    "db:migrate:local": "wrangler d1 execute ai-gateway-db --file=./packages/shared/src/db/schema.sql --local",
+    "db:migrate": "npx wrangler d1 migrations apply agate-db --local",
+    "db:migrate:prod": "npx wrangler d1 migrations apply agate-db --remote --config=workers/proxy/wrangler.prod.jsonc",
+    "db:migration:create": "npx wrangler d1 migrations create agate-db --local",
+    "db:migration:list": "npx wrangler d1 migrations list agate-db --local",
+    "db:migration:list:prod": "npx wrangler d1 migrations list agate-db --remote --config=workers/proxy/wrangler.prod.jsonc",
     "db:seed": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql",
     "db:seed:local": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-data.sql --local",
     "db:seed:system": "wrangler d1 execute ai-gateway-db --file=./scripts/seed-system-user.sql",
@@ -67,7 +70,7 @@
     "npm-run-all": "^4.1.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
-    "wrangler": "^3.94.0"
+    "wrangler": "^4.76.0"
   },
   "engines": {
     "node": ">=20.0.0"

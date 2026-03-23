@@ -1616,17 +1616,21 @@ export class Queries {
     credential_name: string;
     api_key_encrypted: string;
     base_url?: string | null;
-    priority?: number;
-    weight?: number;
+    health_check_model_id?: string | null;
+    health_status?: string;
+    last_health_check?: number | null;
+    last_check_success?: number | null;
+    consecutive_failures?: number;
   }): Promise<ProviderCredential> {
     const now = Date.now();
     const result = await this.db
       .prepare(
         `INSERT INTO provider_credentials (
           id, provider_id, credential_name, api_key_encrypted, base_url,
-          is_active, priority, weight, health_status,
-          last_health_check, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`
+          is_active, health_check_model_id, health_status,
+          last_health_check, last_check_success, consecutive_failures,
+          created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
       )
       .bind(
         data.id,
@@ -1635,10 +1639,11 @@ export class Queries {
         data.api_key_encrypted,
         data.base_url ?? null,
         true,
-        data.priority ?? 0,
-        data.weight ?? 1,
-        'unknown',
-        null,
+        data.health_check_model_id ?? null,
+        data.health_status ?? 'unknown',
+        data.last_health_check ?? null,
+        data.last_check_success ?? null,
+        data.consecutive_failures ?? 0,
         now,
         now
       )
@@ -1668,6 +1673,60 @@ export class Queries {
 
     if (!result.success) {
       throw new Error(`Failed to update credential health: ${result.error}`);
+    }
+
+    return this.getCredential(id) as Promise<ProviderCredential>;
+  }
+
+  /**
+   * Increment consecutive failures for health check tracking
+   *
+   * @param id - Credential ID
+   * @returns Updated credential object
+   */
+  async incrementCredentialFailure(id: string): Promise<ProviderCredential> {
+    const result = await this.db
+      .prepare(
+        'UPDATE provider_credentials SET consecutive_failures = consecutive_failures + 1, last_health_check = ?1, updated_at = ?2 WHERE id = ?3'
+      )
+      .bind(Date.now(), Date.now(), id)
+      .run();
+
+    if (!result.success) {
+      throw new Error(`Failed to increment credential failures: ${result.error}`);
+    }
+
+    const updated = await this.getCredential(id);
+    if (updated && updated.consecutive_failures >= 3) {
+      // Auto-mark as unhealthy after 3 consecutive failures
+      await this.updateCredentialHealth(id, 'unhealthy');
+      return (await this.getCredential(id))!;
+    }
+    return updated!;
+  }
+
+  /**
+   * Reset consecutive failures and record successful health check
+   *
+   * @param id - Credential ID
+   * @returns Updated credential object
+   */
+  async recordCredentialSuccess(id: string): Promise<ProviderCredential> {
+    const result = await this.db
+      .prepare(
+        `UPDATE provider_credentials
+         SET consecutive_failures = 0,
+             last_health_check = ?1,
+             last_check_success = ?1,
+             health_status = 'healthy',
+             updated_at = ?1
+         WHERE id = ?2`
+      )
+      .bind(Date.now(), id)
+      .run();
+
+    if (!result.success) {
+      throw new Error(`Failed to record credential success: ${result.error}`);
     }
 
     return this.getCredential(id) as Promise<ProviderCredential>;
@@ -2055,6 +2114,10 @@ export const deleteProviderCredential = async (db: D1Database, id: string): Prom
 };
 export const updateCredentialHealth = (db: D1Database, id: string, status: string) =>
   getQueries(db).updateCredentialHealth(id, status);
+export const incrementCredentialFailure = (db: D1Database, id: string) =>
+  getQueries(db).incrementCredentialFailure(id);
+export const recordCredentialSuccess = (db: D1Database, id: string) =>
+  getQueries(db).recordCredentialSuccess(id);
 
 // Quota operations
 export const resetUserQuota = async (db: D1Database, userId: string): Promise<void> => {
@@ -2629,8 +2692,6 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
   credential_name: string;
   api_key_encrypted: string;
   base_url: string | null;
-  priority: number;
-  weight: number;
   health_status: string;
   provider_name: string;
   provider_base_url: string;
@@ -2646,8 +2707,6 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
       pc.credential_name,
       pc.api_key_encrypted,
       pc.base_url,
-      pc.priority,
-      pc.weight,
       pc.health_status,
       p.name as provider_name,
       p.base_url as provider_base_url,
@@ -2670,7 +2729,7 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
     FROM provider_credentials pc
     INNER JOIN providers p ON pc.provider_id = p.id
     WHERE pc.is_active = 1 AND p.is_active = 1
-    ORDER BY pc.priority DESC, pc.created_at ASC
+    ORDER BY pc.created_at ASC
   `).all();
   return result.results as any;
 };

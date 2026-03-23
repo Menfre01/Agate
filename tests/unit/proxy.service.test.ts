@@ -164,23 +164,11 @@ describe("ProxyService", () => {
     mockQuotaService = {
       checkQuota: vi.fn().mockResolvedValue({
         allowed: true,
-        remaining: {
-          apiKeyDaily: 9000,
-          userDaily: 9500,
-          departmentDaily: 47500,
-          departmentPool: 95000,
-          companyDaily: 95000,
-          companyPool: 950000,
-        },
+        remaining: Infinity,
       }),
       deductQuota: vi.fn().mockResolvedValue({
         tokens: 1000,
-        updated: {
-          apiKey: { quota_used: 2000 },
-          user: { quota_used: 1500 },
-          department: { daily_used: 3500, quota_used: 6000 },
-          company: { daily_used: 6000, quota_used: 51000 },
-        },
+        quotaUsed: 1500,
       }),
     };
 
@@ -275,15 +263,7 @@ describe("ProxyService", () => {
     it("should check quota before forwarding", async () => {
       mockQuotaService.checkQuota.mockResolvedValue({
         allowed: false,
-        remaining: {
-          apiKeyDaily: 0,
-          userDaily: 9500,
-          departmentDaily: 47500,
-          departmentPool: 95000,
-          companyDaily: 95000,
-          companyPool: 950000,
-        },
-        failedAt: "apiKey",
+        remaining: 0,
       });
 
       await expect(
@@ -309,12 +289,8 @@ describe("ProxyService", () => {
       await proxyService.forwardMessage(mockAuthContext, mockRequest);
 
       expect(mockQuotaService.deductQuota).toHaveBeenCalledWith(
-        "key-123",
         "user-123",
-        "dept-123",
-        "company-123",
-        30,
-        false
+        30
       );
     });
 
@@ -492,23 +468,12 @@ describe("ProxyService", () => {
 
       mockQuotaService.checkQuota.mockResolvedValue({
         allowed: true,
-        remaining: {
-          apiKeyDaily: 9000,
-          userDaily: 9500,
-          departmentDaily: null,
-          departmentPool: null,
-          companyDaily: 95000,
-          companyPool: 950000,
-        },
+        remaining: Infinity,
       });
 
       mockQuotaService.deductQuota.mockResolvedValue({
         tokens: 1000,
-        updated: {
-          apiKey: { quota_used: 2000 },
-          user: { quota_used: 1500 },
-          company: { daily_used: 6000, quota_used: 51000 },
-        },
+        quotaUsed: 1500,
       });
 
       const mockResponse = {

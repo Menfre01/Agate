@@ -129,29 +129,23 @@ export class ProxyService {
       });
     }
 
-    // Fetch entities for quota check
-    const [apiKey, user, department, company] = await Promise.all([
+    // Fetch entities needed for request processing
+    const [apiKey, user, company] = await Promise.all([
       queries.getApiKey(this.db, authContext.apiKeyId),
       queries.getUser(this.db, authContext.userId),
-      authContext.departmentId
-        ? queries.getDepartment(this.db, authContext.departmentId)
-        : Promise.resolve(null),
       queries.getCompany(this.db, authContext.companyId),
     ]);
 
     if (!apiKey || !user || !company) {
-      throw new Error("Failed to fetch entities for quota check");
+      throw new Error("Failed to fetch entities for request processing");
     }
 
     // Estimate token cost for quota check (use max_tokens as upper bound)
     const estimatedTokens = this.estimateTokens(request);
 
-    // Check quota
+    // Check quota (Phase 1: only enforces for system user)
     const quotaCheck = await this.quotaService.checkQuota(
-      apiKey,
       user,
-      department,
-      company,
       estimatedTokens
     );
 
@@ -159,7 +153,7 @@ export class ProxyService {
       throw new QuotaExceededError({
         quota: estimatedTokens,
         used: 0,
-        entity: quotaCheck.failedAt ?? "quota",
+        entity: "system_user",
       });
     }
 
@@ -189,23 +183,16 @@ export class ProxyService {
     // Process response and extract usage
     const usage = await this.extractUsage(result.response);
 
-    // Deduct quota
+    // Deduct quota (Phase 1: only for system user)
     const actualTokens = usage.input_tokens + usage.output_tokens;
-    await this.quotaService.deductQuota(
-      apiKey.id,
-      user.id,
-      department?.id ?? null,
-      company.id,
-      actualTokens,
-      apiKey.is_unlimited
-    );
+    await this.quotaService.deductQuota(user.id, actualTokens);
 
     // Record usage - use actual upstream model name for cost calculation
     await this.usageService.recordUsage({
       apiKeyId: apiKey.id,
       userId: user.id,
       companyId: company.id,
-      departmentId: department?.id ?? null,
+      departmentId: authContext.departmentId,
       providerId: credential.providerId,
       modelId: model.id,
       modelName: upstreamModel,  // 使用实际发送给上游的 model 名称

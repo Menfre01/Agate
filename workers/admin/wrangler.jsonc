@@ -8,7 +8,8 @@
     {
       "binding": "DB",
       "database_name": "agate-db",
-      "database_id": "local"
+      "database_id": "local",
+      "migrations_dir": "../../migrations"
     }
   ],
 

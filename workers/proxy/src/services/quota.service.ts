@@ -1,12 +1,21 @@
 /**
- * Quota Service for quota checking and deduction.
- *
- * Implements multi-level quota validation:
- * API Key → User → Department → Company
- *
- * Supports both daily quota (auto-reset) and pool quota (manual refill).
+ * Quota Service for quota checking and deduction (Proxy Worker - Phase 1).
  *
  * @module services/quota
+ *
+ * ## Phase 1 vs Phase 2 Functionality
+ *
+ * ### Phase 1 (Main Line 1: LLM Load Balancing + API Key Management)
+ * - Only enforces quota for system user (sys-health-user)
+ * - Regular users bypass quota checks (treated as unlimited)
+ * - Health check worker records usage but doesn't enforce limits for normal users
+ *
+ * ### Phase 2 (Main Line 2: Token Monitoring System) - FUTURE
+ * - Implements multi-level quota validation: API Key → User → Department → Company
+ * - Supports both daily quota (auto-reset) and pool quota (manual refill)
+ * - Real-time monitoring, alerts, and cost analysis
+ *
+ * @see PRD V2 Section 3 - Phase separation
  */
 
 import type {
@@ -14,122 +23,51 @@ import type {
   User,
   Company,
   Department,
-  QuotaChange,
   Env,
 } from "@agate/shared/types";
 import * as queries from "@agate/shared/db/queries.js";
-import { generateId } from "@agate/shared/utils/id-generator.js";
 
 /**
- * Quota check result.
+ * System user ID for health checks
+ * @see PRD V2 Section 2.4.3
+ */
+const SYSTEM_USER_ID = "sys-health-user";
+
+/**
+ * Quota check result (Phase 1 simplified).
  */
 export interface QuotaCheckResult {
   /** Whether quota check passed */
   allowed: boolean;
-  /** Remaining quota at each level */
-  remaining: {
-    /** API Key daily quota remaining */
-    apiKeyDaily: number;
-    /** User daily quota remaining */
-    userDaily: number;
-    /** Department daily quota remaining */
-    departmentDaily: number | null;
-    /** Department pool quota remaining */
-    departmentPool: number | null;
-    /** Company daily quota remaining */
-    companyDaily: number;
-    /** Company pool quota remaining */
-    companyPool: number;
-  };
-  /** Which level failed the check */
-  failedAt?: "apiKey" | "user" | "department" | "company";
+  /** Remaining tokens for system user (always Infinity for non-system users) */
+  remaining: number;
 }
 
 /**
- * Quota deduction result.
+ * Quota deduction result (Phase 1 simplified).
  */
 export interface QuotaDeductionResult {
   /** Tokens deducted */
   tokens: number;
-  /** Updated quota values */
-  updated: {
-    apiKey: { quota_used: number; quota_bonus_used: number };
-    user: { quota_used: number };
-    department?: { daily_used: number; quota_used: number };
-    company: { daily_used: number; quota_used: number };
-  };
+  /** Updated user quota_used (only for system user) */
+  quotaUsed: number;
 }
 
 /**
- * UTC 0:00 timestamp for the current day.
- */
-function getTodayUtcZero(): number {
-  const now = new Date();
-  const utc = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    0,
-    0,
-    0,
-    0
-  );
-  return utc;
-}
-
-/**
- * Checks if a quota reset is needed and performs it.
- *
- * @param lastReset - Last reset timestamp
- * @param currentUsed - Current used value
- * @returns Whether reset was performed
- */
-async function checkAndResetQuota(
-  db: D1Database,
-  entityType: "api_key" | "user" | "department" | "company",
-  entityId: string,
-  lastReset: number | null
-): Promise<boolean> {
-  const todayUtc = getTodayUtcZero();
-
-  if (lastReset && lastReset >= todayUtc) {
-    return false; // Already reset today
-  }
-
-  // Perform reset
-  switch (entityType) {
-    case "api_key":
-      await queries.resetApiKeyQuota(db, entityId);
-      break;
-    case "user":
-      await queries.resetUserQuota(db, entityId);
-      break;
-    case "department":
-      await queries.resetDepartmentQuota(db, entityId);
-      break;
-    case "company":
-      await queries.resetCompanyQuota(db, entityId);
-      break;
-  }
-
-  return true;
-}
-
-/**
- * Quota Service class.
+ * Quota Service class for Proxy Worker (Phase 1).
  *
  * @example
  * ```ts
  * const quota = new QuotaService(env);
  *
- * // Check quota before request
- * const check = await quota.checkQuota(authContext, 1000);
+ * // Check quota before request (always true for non-system users)
+ * const check = await quota.checkQuota(user, 1000);
  * if (!check.allowed) {
- *   throw new QuotaExceededError(check);
+ *   throw new QuotaExceededError("System user quota exceeded");
  * }
  *
- * // Deduct after successful request
- * await quota.deductQuota(authContext, 1000);
+ * // Deduct after successful request (only for system user)
+ * await quota.deductQuota(userId, 1000);
  * ```
  */
 export class QuotaService {
@@ -145,703 +83,125 @@ export class QuotaService {
   }
 
   /**
-   * Checks if a request is within quota limits.
+   * Checks if a request is within quota limits (Phase 1 simplified).
    *
-   * Checks quota levels in order (fine to coarse):
-   * API Key → User → Department → Company
+   * **Phase 1 Logic:**
+   * - Only enforces quota for system user (sys-health-user) for health check protection
+   * - All other users bypass quota checks
    *
-   * @param apiKey - API Key entity
+   * **Phase 2 (Future):**
+   * - Will implement multi-level quota: API Key → User → Department → Company
+   *
    * @param user - User entity
-   * @param department - Department entity (optional)
-   * @param company - Company entity
    * @param tokens - Token cost of the request
-   * @returns Quota check result
+   * @returns Quota check result (always true for non-system users in Phase 1)
+   *
+   * @see PRD V2 Section 2.4 - System User Quota Protection
    */
   async checkQuota(
-    apiKey: ApiKey,
     user: User,
-    department: Department | null,
-    company: Company,
     tokens: number
   ): Promise<QuotaCheckResult> {
-    // Skip check for unlimited keys
-    if (apiKey.is_unlimited) {
-      return {
-        allowed: true,
-        remaining: {
-          apiKeyDaily: Infinity,
-          userDaily: Infinity,
-          departmentDaily: Infinity,
-          departmentPool: Infinity,
-          companyDaily: Infinity,
-          companyPool: Infinity,
-        },
-      };
+    // Phase 1: Only check system user quota
+    if (user.id === SYSTEM_USER_ID || user.role === "system") {
+      return this.checkSystemUserQuota(user, tokens);
     }
 
-    // Check and reset daily quotas if needed
-    await this.ensureDailyQuotasReset(apiKey, user, department, company);
-
-    // Clean up expired bonus quota
-    await queries.cleanupExpiredBonus(this.db, apiKey.id);
-
-    // Fetch fresh data after potential resets
-    const [freshKey, freshUser, freshDept, freshCompany] = await Promise.all([
-      queries.getApiKey(this.db, apiKey.id),
-      queries.getUser(this.db, user.id),
-      department?.id
-        ? queries.getDepartment(this.db, department.id)
-        : Promise.resolve(null),
-      queries.getCompany(this.db, company.id),
-    ]);
-
-    if (!freshKey || !freshUser || !freshCompany) {
-      throw new Error("Failed to fetch fresh quota data");
-    }
-
-    // Calculate available quota including bonus
-    const apiKeyAvailable = this.calculateApiKeyAvailable(freshKey);
-
-    // Calculate user available quota
-    // If user is unlimited, skip user level check
-    // If user quota_daily is 0, it means cascade to parent (0 available at user level)
-    const userAvailable = freshUser.is_unlimited
-      ? Infinity
-      : freshUser.quota_daily - freshUser.quota_used;
-
-    // Check API Key quota
-    if (apiKeyAvailable < tokens) {
-      return {
-        allowed: false,
-        remaining: {
-          apiKeyDaily: apiKeyAvailable,
-          userDaily: userAvailable,
-          departmentDaily: freshDept
-            ? freshDept.quota_daily - freshDept.daily_used
-            : null,
-          departmentPool: freshDept
-            ? freshDept.quota_pool - freshDept.quota_used
-            : null,
-          companyDaily: freshCompany.quota_daily - freshCompany.daily_used,
-          companyPool: freshCompany.quota_pool - freshCompany.quota_used,
-        },
-        failedAt: "apiKey",
-      };
-    }
-
-    // Check User quota (skip if user is unlimited)
-    if (!freshUser.is_unlimited && userAvailable < tokens) {
-      return {
-        allowed: false,
-        remaining: {
-          apiKeyDaily: apiKeyAvailable,
-          userDaily: userAvailable,
-          departmentDaily: freshDept
-            ? freshDept.quota_daily - freshDept.daily_used
-            : null,
-          departmentPool: freshDept
-            ? freshDept.quota_pool - freshDept.quota_used
-            : null,
-          companyDaily: freshCompany.quota_daily - freshCompany.daily_used,
-          companyPool: freshCompany.quota_pool - freshCompany.quota_used,
-        },
-        failedAt: "user",
-      };
-    }
-
-    // Check Department quota (if applicable)
-    if (freshDept) {
-      const deptDailyAvailable = freshDept.quota_daily - freshDept.daily_used;
-      const deptPoolAvailable = freshDept.quota_pool - freshDept.quota_used;
-
-      if (deptDailyAvailable < tokens && deptPoolAvailable < tokens) {
-        return {
-          allowed: false,
-          remaining: {
-            apiKeyDaily: apiKeyAvailable,
-            userDaily: userAvailable,
-            departmentDaily: deptDailyAvailable,
-            departmentPool: deptPoolAvailable,
-            companyDaily: freshCompany.quota_daily - freshCompany.daily_used,
-            companyPool: freshCompany.quota_pool - freshCompany.quota_used,
-          },
-          failedAt: "department",
-        };
-      }
-    }
-
-    // Check Company quota
-    const companyDailyAvailable = freshCompany.quota_daily - freshCompany.daily_used;
-    const companyPoolAvailable = freshCompany.quota_pool - freshCompany.quota_used;
-
-    if (companyDailyAvailable < tokens && companyPoolAvailable < tokens) {
-      return {
-        allowed: false,
-        remaining: {
-          apiKeyDaily: apiKeyAvailable,
-          userDaily: userAvailable,
-          departmentDaily: freshDept
-            ? freshDept.quota_daily - freshDept.daily_used
-            : null,
-          departmentPool: freshDept
-            ? freshDept.quota_pool - freshDept.quota_used
-            : null,
-          companyDaily: companyDailyAvailable,
-          companyPool: companyPoolAvailable,
-        },
-        failedAt: "company",
-      };
-    }
-
-    // All checks passed
+    // Phase 1: All other users bypass quota checks
+    // TODO: Phase 2 - Implement full multi-level quota validation
     return {
       allowed: true,
-      remaining: {
-        apiKeyDaily: apiKeyAvailable,
-        userDaily: userAvailable,
-        departmentDaily: freshDept
-          ? freshDept.quota_daily - freshDept.daily_used
-          : null,
-        departmentPool: freshDept
-          ? freshDept.quota_pool - freshDept.quota_used
-          : null,
-        companyDaily: companyDailyAvailable,
-        companyPool: companyPoolAvailable,
-      },
+      remaining: Infinity,
     };
   }
 
   /**
-   * Deducts quota after a successful request.
+   * Checks system user quota for health check protection.
    *
-   * Deducts from all applicable levels:
-   * API Key → User → Department → Company
+   * **Phase 1 - Health Check Quota Protection:**
+   * - Enforces daily quota limit for system user
+   * - Prevents health check storms from bugs
+   * - Logs warning when quota > 80%
    *
-   * Priority: Daily quota is used first, then pool quota.
+   * @param user - System user entity
+   * @param tokens - Token cost of the request
+   * @returns Quota check result
    *
-   * @param apiKeyId - API Key ID
+   * @see PRD V2 Section 2.4 - System User Quota Protection
+   */
+  private async checkSystemUserQuota(
+    user: User,
+    tokens: number
+  ): Promise<QuotaCheckResult> {
+    // Check if quota is exhausted
+    const remaining = user.quota_daily - user.quota_used;
+    if (remaining <= 0) {
+      console.warn(
+        `[Quota] System user quota exhausted: ${user.quota_used}/${user.quota_daily}`
+      );
+      return {
+        allowed: false,
+        remaining: 0,
+      };
+    }
+
+    // Warn if approaching quota limit
+    const usageRatio = user.quota_used / user.quota_daily;
+    if (usageRatio >= 0.8) {
+      console.warn(
+        `[Quota] System user quota at ${Math.floor(usageRatio * 100)}%: ${user.quota_used}/${user.quota_daily}`
+      );
+    }
+
+    // Check if single request exceeds limit (abnormal detection)
+    if (tokens > 100) {
+      console.warn(
+        `[Quota] Abnormally large health check request: ${tokens} tokens`
+      );
+      return {
+        allowed: false,
+        remaining,
+      };
+    }
+
+    return {
+      allowed: true,
+      remaining,
+    };
+  }
+
+  /**
+   * Deducts quota after a successful request (Phase 1 simplified).
+   *
+   * **Phase 1 Logic:**
+   * - Only deducts for system user
+   * - All other users skip deduction (no quota tracking in Phase 1)
+   *
+   * **Phase 2 (Future):**
+   * - Will deduct from all levels: API Key → User → Department → Company
+   *
    * @param userId - User ID
-   * @param departmentId - Department ID (optional)
-   * @param companyId - Company ID
    * @param tokens - Tokens to deduct
-   * @param isUnlimited - Whether the API key has unlimited quota (skips upstream deduction)
    * @returns Deduction result
    */
   async deductQuota(
-    apiKeyId: string,
     userId: string,
-    departmentId: string | null,
-    companyId: string,
-    tokens: number,
-    isUnlimited: boolean = false
+    tokens: number
   ): Promise<QuotaDeductionResult> {
-    // For unlimited keys, skip quota deduction, return current values
-    if (isUnlimited) {
-      const [apiKey, user, company] = await Promise.all([
-        queries.getApiKey(this.db, apiKeyId),
-        queries.getUser(this.db, userId),
-        queries.getCompany(this.db, companyId),
-      ]);
-      if (!apiKey || !user || !company) {
-        throw new Error("Failed to fetch entities for unlimited quota");
-      }
-
-      const department = departmentId
-        ? await queries.getDepartment(this.db, departmentId)
-        : null;
-
+    // Phase 1: Only deduct for system user
+    if (userId === SYSTEM_USER_ID) {
+      const user = await queries.deductUserQuota(this.db, userId, tokens);
       return {
         tokens,
-        updated: {
-          apiKey: { quota_used: apiKey.quota_used, quota_bonus_used: apiKey.quota_bonus_used },
-          user: { quota_used: user.quota_used },
-          ...(department && {
-            department: {
-              daily_used: department.daily_used,
-              quota_used: department.quota_used,
-            },
-          }),
-          company: {
-            daily_used: company.daily_used,
-            quota_used: company.quota_used,
-          },
-        },
+        quotaUsed: user.quota_used,
       };
     }
 
-    // Deduct from API Key (with bonus fallback)
-    const apiKey = await queries.deductApiKeyQuotaWithBonus(this.db, apiKeyId, tokens);
-
-    // Deduct from User
-    const user = await queries.deductUserQuota(this.db, userId, tokens);
-
-    // Deduct from Department (if applicable)
-    let department: Department | null = null;
-    if (departmentId) {
-      department = await this.deductDepartmentQuota(departmentId, tokens);
-    }
-
-    // Deduct from Company
-    const company = await this.deductCompanyQuota(companyId, tokens);
-
+    // Phase 1: Skip deduction for all other users
+    // TODO: Phase 2 - Implement full multi-level quota deduction
     return {
       tokens,
-      updated: {
-        apiKey: { quota_used: apiKey.quota_used, quota_bonus_used: apiKey.quota_bonus_used },
-        user: { quota_used: user.quota_used },
-        ...(department && {
-          department: {
-            daily_used: department.daily_used,
-            quota_used: department.quota_used,
-          },
-        }),
-        company: {
-          daily_used: company.daily_used,
-          quota_used: company.quota_used,
-        },
-      },
+      quotaUsed: 0,
     };
-  }
-
-  /**
-   * Records a quota change for audit purposes.
-   *
-   * @param entityType - Entity type
-   * @param entityId - Entity ID
-   * @param changeType - Change type
-   * @param changeAmount - Amount changed
-   * @param previousQuota - Previous quota value
-   * @param newQuota - New quota value
-   * @param reason - Reason for change (optional)
-   * @param createdBy - User who made the change (optional)
-   */
-  async recordQuotaChange(
-    entityType: "api_key" | "department" | "company",
-    entityId: string,
-    changeType: "set" | "add" | "reset" | "bonus",
-    changeAmount: number,
-    previousQuota: number,
-    newQuota: number,
-    reason?: string,
-    createdBy?: string
-  ): Promise<void> {
-    const change: QuotaChange = {
-      id: generateId(),
-      entity_type: entityType,
-      entity_id: entityId,
-      change_type: changeType,
-      change_amount: changeAmount,
-      previous_quota: previousQuota,
-      new_quota: newQuota,
-      reason: reason ?? null,
-      created_by: createdBy ?? null,
-      created_at: Date.now(),
-    };
-
-    await queries.createQuotaChange(this.db, change);
-  }
-
-  /**
-   * Sets quota value for an entity.
-   *
-   * @param entityType - Entity type (company, department, api_key)
-   * @param entityId - Entity ID
-   * @param quotaType - Quota type (pool or daily)
-   * @param value - New quota value
-   * @param reason - Reason for the change (optional)
-   * @param createdBy - User who made the change (optional)
-   */
-  async setQuota(
-    entityType: "company" | "department" | "api_key",
-    entityId: string,
-    quotaType: "pool" | "daily",
-    value: number,
-    reason?: string,
-    createdBy?: string
-  ): Promise<void> {
-    let entity: Company | Department | ApiKey | null;
-    let previousValue = 0;
-
-    switch (entityType) {
-      case "company": {
-        entity = await queries.getCompany(this.db, entityId);
-        if (!entity) {
-          throw new Error(`Company not found: ${entityId}`);
-        }
-        previousValue = quotaType === "pool" ? entity.quota_pool : entity.quota_daily;
-        const field = quotaType === "pool" ? "quota_pool" : "quota_daily";
-        await queries.updateCompany(this.db, entityId, { [field]: value });
-        break;
-      }
-      case "department": {
-        entity = await queries.getDepartment(this.db, entityId);
-        if (!entity) {
-          throw new Error(`Department not found: ${entityId}`);
-        }
-        previousValue = quotaType === "pool" ? entity.quota_pool : entity.quota_daily;
-        const field = quotaType === "pool" ? "quota_pool" : "quota_daily";
-        await queries.updateDepartment(this.db, entityId, { [field]: value });
-        break;
-      }
-      case "api_key": {
-        entity = await queries.getApiKey(this.db, entityId);
-        if (!entity) {
-          throw new Error(`API Key not found: ${entityId}`);
-        }
-        previousValue = entity.quota_daily;
-        await queries.updateApiKey(this.db, entityId, { quota_daily: value });
-        break;
-      }
-      default:
-        throw new Error(`Invalid entity type: ${entityType}`);
-    }
-
-    await this.recordQuotaChange(
-      entityType,
-      entityId,
-      "set",
-      value - previousValue,
-      previousValue,
-      value,
-      reason,
-      createdBy
-    );
-  }
-
-  /**
-   * Resets quota usage for an entity.
-   *
-   * Resets the used amount back to zero while preserving the quota limit.
-   *
-   * @param entityType - Entity type (company, department, api_key)
-   * @param entityId - Entity ID
-   * @param reason - Reason for the change (optional)
-   * @param createdBy - User who made the change (optional)
-   */
-  async resetQuota(
-    entityType: "company" | "department" | "api_key",
-    entityId: string,
-    reason?: string,
-    createdBy?: string
-  ): Promise<void> {
-    let entity: Company | Department | ApiKey | null;
-    let previousUsed = 0;
-
-    switch (entityType) {
-      case "company": {
-        entity = await queries.getCompany(this.db, entityId);
-        if (!entity) {
-          throw new Error(`Company not found: ${entityId}`);
-        }
-        previousUsed = entity.quota_used;
-        await queries.resetCompanyQuota(this.db, entityId);
-        break;
-      }
-      case "department": {
-        entity = await queries.getDepartment(this.db, entityId);
-        if (!entity) {
-          throw new Error(`Department not found: ${entityId}`);
-        }
-        previousUsed = entity.quota_used;
-        await queries.resetDepartmentQuota(this.db, entityId);
-        break;
-      }
-      case "api_key": {
-        entity = await queries.getApiKey(this.db, entityId);
-        if (!entity) {
-          throw new Error(`API Key not found: ${entityId}`);
-        }
-        previousUsed = entity.quota_used;
-        await queries.resetApiKeyQuota(this.db, entityId);
-        break;
-      }
-      default:
-        throw new Error(`Invalid entity type: ${entityType}`);
-    }
-
-    await this.recordQuotaChange(
-      entityType,
-      entityId,
-      "reset",
-      -previousUsed,
-      previousUsed,
-      0,
-      reason,
-      createdBy
-    );
-  }
-
-  /**
-   * Adds bonus quota to an entity.
-   *
-   * Bonus quota is added to the pool quota and can have an optional expiry.
-   *
-   * @param entityType - Entity type (company, department, api_key)
-   * @param entityId - Entity ID
-   * @param amount - Bonus amount to add
-   * @param expiry - Optional expiry timestamp (for api_key only)
-   * @param reason - Reason for the change (optional)
-   * @param createdBy - User who made the change (optional)
-   */
-  async addBonusQuota(
-    entityType: "company" | "department" | "api_key",
-    entityId: string,
-    amount: number,
-    expiry?: number,
-    reason?: string,
-    createdBy?: string
-  ): Promise<void> {
-    let entity: Company | Department | ApiKey | null;
-    let previousValue = 0;
-
-    switch (entityType) {
-      case "company": {
-        entity = await queries.getCompany(this.db, entityId);
-        if (!entity) {
-          throw new Error(`Company not found: ${entityId}`);
-        }
-        previousValue = entity.quota_pool;
-        await queries.updateCompany(this.db, entityId, {
-          quota_pool: entity.quota_pool + amount,
-        });
-        break;
-      }
-      case "department": {
-        entity = await queries.getDepartment(this.db, entityId);
-        if (!entity) {
-          throw new Error(`Department not found: ${entityId}`);
-        }
-        previousValue = entity.quota_pool;
-        await queries.updateDepartment(this.db, entityId, {
-          quota_pool: entity.quota_pool + amount,
-        });
-        break;
-      }
-      case "api_key": {
-        entity = await queries.getApiKey(this.db, entityId);
-        if (!entity) {
-          throw new Error(`API Key not found: ${entityId}`);
-        }
-        previousValue = entity.quota_bonus;
-        await queries.addApiKeyBonus(this.db, entityId, amount, expiry ?? undefined);
-        break;
-      }
-      default:
-        throw new Error(`Invalid entity type: ${entityType}`);
-    }
-
-    await this.recordQuotaChange(
-      entityType,
-      entityId,
-      "bonus",
-      amount,
-      previousValue,
-      previousValue + amount,
-      reason,
-      createdBy
-    );
-  }
-
-  /**
-   * Gets current quota information for an entity.
-   *
-   * @param entityType - Entity type
-   * @param entityId - Entity ID
-   * @returns Quota information
-   */
-  async getQuotaInfo(
-    entityType: "company" | "department" | "api_key",
-    entityId: string
-  ): Promise<{
-    entity_type: string;
-    entity_id: string;
-    entity_name: string;
-    quota_pool: number;
-    quota_used: number;
-    quota_daily: number;
-    daily_used: number;
-    last_reset_at: number | null;
-  }> {
-    switch (entityType) {
-      case "company": {
-        const company = await queries.getCompany(this.db, entityId);
-        if (!company) {
-          throw new Error(`Company not found: ${entityId}`);
-        }
-        return {
-          entity_type: "company",
-          entity_id: company.id,
-          entity_name: company.name,
-          quota_pool: company.quota_pool,
-          quota_used: company.quota_used,
-          quota_daily: company.quota_daily,
-          daily_used: company.daily_used,
-          last_reset_at: company.last_reset_at,
-        };
-      }
-      case "department": {
-        const department = await queries.getDepartment(this.db, entityId);
-        if (!department) {
-          throw new Error(`Department not found: ${entityId}`);
-        }
-        return {
-          entity_type: "department",
-          entity_id: department.id,
-          entity_name: department.name,
-          quota_pool: department.quota_pool,
-          quota_used: department.quota_used,
-          quota_daily: department.quota_daily,
-          daily_used: department.daily_used,
-          last_reset_at: department.last_reset_at,
-        };
-      }
-      case "api_key": {
-        const apiKey = await queries.getApiKey(this.db, entityId);
-        if (!apiKey) {
-          throw new Error(`API Key not found: ${entityId}`);
-        }
-        const user = await queries.getUser(this.db, apiKey.user_id);
-        return {
-          entity_type: "api_key",
-          entity_id: apiKey.id,
-          entity_name: apiKey.name ?? `${user?.email ?? "Unknown"}'s key`,
-          quota_pool: 0,
-          quota_used: 0,
-          quota_daily: apiKey.quota_daily,
-          daily_used: apiKey.quota_used,
-          last_reset_at: apiKey.last_reset_at,
-        };
-      }
-      default:
-        throw new Error(`Invalid entity type: ${entityType}`);
-    }
-  }
-
-  /**
-   * Ensures daily quotas are reset if needed.
-   *
-   * @param apiKey - API Key entity
-   * @param user - User entity
-   * @param department - Department entity (optional)
-   * @param company - Company entity
-   */
-  private async ensureDailyQuotasReset(
-    apiKey: ApiKey,
-    user: User,
-    department: Department | null,
-    company: Company
-  ): Promise<void> {
-    const resets = [
-      checkAndResetQuota(this.db, "api_key", apiKey.id, apiKey.last_reset_at),
-      checkAndResetQuota(this.db, "user", user.id, user.last_reset_at),
-      checkAndResetQuota(this.db, "company", company.id, company.last_reset_at),
-    ];
-
-    if (department) {
-      resets.push(
-        checkAndResetQuota(
-          this.db,
-          "department",
-          department.id,
-          department.last_reset_at
-        )
-      );
-    }
-
-    await Promise.all(resets);
-  }
-
-  /**
-   * Calculates available quota for an API Key including bonus.
-   *
-   * Bonus is only counted if it hasn't expired.
-   *
-   * @param apiKey - API Key entity
-   * @returns Available quota
-   */
-  private calculateApiKeyAvailable(apiKey: ApiKey): number {
-    const dailyRemaining = apiKey.quota_daily - apiKey.quota_used;
-    let bonusRemaining = 0;
-
-    // Check if bonus is still valid (has amount and not expired)
-    if (apiKey.quota_bonus > apiKey.quota_bonus_used) {
-      if (!apiKey.quota_bonus_expiry || apiKey.quota_bonus_expiry > Date.now()) {
-        bonusRemaining = apiKey.quota_bonus - apiKey.quota_bonus_used;
-      }
-    }
-
-    return dailyRemaining + bonusRemaining;
-  }
-
-  /**
-   * Deducts quota from department.
-   *
-   * Priority: Daily quota first, then pool quota.
-   *
-   * @param departmentId - Department ID
-   * @param tokens - Tokens to deduct
-   * @returns Updated department
-   */
-  private async deductDepartmentQuota(
-    departmentId: string,
-    tokens: number
-  ): Promise<Department> {
-    const dept = await queries.getDepartment(this.db, departmentId);
-    if (!dept) {
-      throw new Error(`Department not found: ${departmentId}`);
-    }
-
-    const dailyAvailable = dept.quota_daily - dept.daily_used;
-
-    if (dailyAvailable >= tokens) {
-      // Use daily quota
-      return queries.deductDepartmentDailyQuota(this.db, departmentId, tokens);
-    } else {
-      // Use remaining daily + pool quota
-      const remainingDaily = dailyAvailable;
-      const fromPool = tokens - remainingDaily;
-      return queries.deductDepartmentMixedQuota(
-        this.db,
-        departmentId,
-        remainingDaily,
-        fromPool
-      );
-    }
-  }
-
-  /**
-   * Deducts quota from company.
-   *
-   * Priority: Daily quota first, then pool quota.
-   *
-   * @param companyId - Company ID
-   * @param tokens - Tokens to deduct
-   * @returns Updated company
-   */
-  private async deductCompanyQuota(
-    companyId: string,
-    tokens: number
-  ): Promise<Company> {
-    const company = await queries.getCompany(this.db, companyId);
-    if (!company) {
-      throw new Error(`Company not found: ${companyId}`);
-    }
-
-    const dailyAvailable = company.quota_daily - company.daily_used;
-
-    if (dailyAvailable >= tokens) {
-      // Use daily quota
-      return queries.deductCompanyDailyQuota(this.db, companyId, tokens);
-    } else {
-      // Use remaining daily + pool quota
-      const remainingDaily = dailyAvailable;
-      const fromPool = tokens - remainingDaily;
-      return queries.deductCompanyMixedQuota(
-        this.db,
-        companyId,
-        remainingDaily,
-        fromPool
-      );
-    }
   }
 }

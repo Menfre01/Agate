@@ -59,6 +59,13 @@ export type {
 // Export utility functions
 export { generateId } from "./utils/id-generator.js";
 export { hashApiKey, extractKeyPrefix, generateApiKey } from "./utils/crypto.js";
+export {
+  consistentHashSelect,
+  hashString,
+  hashValues,
+  type HealthCheck,
+  type ConsistentHashOptions,
+} from "./utils/consistent-hash.js";
 
 // Export error classes (these take precedence over interfaces with same names)
 export {
