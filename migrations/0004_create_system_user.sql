@@ -1,7 +1,30 @@
--- Migration 0004: Create/update system user for health check (PRD V2 Section 2.4.3)
+-- Migration 0004: Create system company and user for health check (PRD V2 Section 2.4.3)
 
--- Update existing system user or insert new one
--- Using 'sys-health' company due to NOT NULL constraint on company_id
+-- First, create the system company (required for user's foreign key)
+INSERT INTO companies (
+    id,
+    name,
+    quota_pool,
+    quota_used,
+    quota_daily,
+    daily_used,
+    last_reset_at,
+    created_at,
+    updated_at
+) VALUES (
+    'sys-health',
+    'System Health Check',
+    0,
+    0,
+    50000,
+    0,
+    (strftime('%s', 'now') * 1000),
+    (strftime('%s', 'now') * 1000),
+    (strftime('%s', 'now') * 1000)
+)
+ON CONFLICT(id) DO NOTHING;
+
+-- Then create/update the system user
 INSERT INTO users (
     id,
     email,

@@ -10,7 +10,7 @@ import type {
   UsageStatsResponse,
   ModelStatsResponse,
   AuthContext,
-} from '@shared/types/api'
+} from '@shared/types'
 
 /**
  * 获取当前用户信息

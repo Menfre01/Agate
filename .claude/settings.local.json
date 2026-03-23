@@ -37,7 +37,8 @@
       "Bash(vitest run:*)",
       "Bash(TEST_CLEANUP=true pnpm exec vitest run tests/functional/proxy/proxy-api.test.ts 2>&1)",
       "Bash(TEST_CLEANUP=true pnpm exec vitest run tests/functional/models/models.test.ts 2>&1)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(./scripts/quick-deploy.sh --account-id=9302c2040014763012133198c2c42709i)"
     ]
   }
 }

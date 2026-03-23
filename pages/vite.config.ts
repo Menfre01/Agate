@@ -32,7 +32,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@shared': resolve(__dirname, '../shared'),
+      '@shared': resolve(__dirname, '../../packages/shared/src'),
+      '@shared/types': resolve(__dirname, '../../packages/shared/src/types'),
     },
   },
   build: {
@@ -64,6 +65,7 @@ export default defineConfig({
       },
     },
   },
+  // @ts-ignore - test config for vitest
   test: {
     globals: true,
     environment: 'jsdom',

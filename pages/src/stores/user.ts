@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { AuthContext } from '@shared/types/api'
+import type { AuthContext } from '@shared/types'
 import { login as loginApi, logout as logoutApi, getCurrentUser } from '@/shared/api/auth'
 
 export const useUserStore = defineStore('user', () => {

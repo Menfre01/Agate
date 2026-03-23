@@ -59,9 +59,10 @@ The easiest way to deploy is using the quick deploy script:
 The script will automatically:
 1. Create D1 database (if not exists)
 2. Create KV namespace (if not exists)
-3. Deploy database schema and production seed data
+3. Apply database migrations (idempotent incremental migrations)
 4. Deploy Proxy, Admin, and Health workers
-5. Initialize super admin API key
+5. Deploy Admin Frontend (Pages)
+6. Initialize super admin API key
 
 ---
 
@@ -166,21 +167,24 @@ Create `workers/admin/wrangler.prod.jsonc`:
 }
 ```
 
-#### Step 5: Deploy Database Schema and Seed Data
+#### Step 5: Apply Database Migrations
 
 ```bash
-# Deploy schema
-wrangler d1 execute agate-db --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc
-
-# Deploy seed data (includes system user for health check)
-wrangler d1 execute agate-db --file=./scripts/seed-prod.sql --config workers/proxy/wrangler.prod.jsonc
+# Apply all pending migrations (idempotent)
+wrangler d1 migrations apply agate-db --remote --config workers/proxy/wrangler.prod.jsonc
 ```
 
-**Seed data includes:**
-- System user (`sys-health-user`) for health check logging
-- System company and API key for health check
-- Anthropic provider
-- Claude models (Opus 4.6, Sonnet 4.6, Haiku 4.5) with pricing
+This command:
+- Tracks which migrations have been applied
+- Only runs new migrations
+- Is safe to run multiple times (idempotent)
+
+**Migrations include:**
+- `0001_initial.sql` - Initial database schema
+- `0002_update_provider_credentials.sql` - Health check fields
+- `0003_update_users_for_system.sql` - System user support
+- `0004_create_system_user.sql` - System user for health checks
+- `0005_seed_prod_data.sql` - Production seed data (providers, models, demo company)
 
 #### Step 6: Deploy Workers
 
@@ -284,7 +288,7 @@ Verify upstream API credentials are valid in the provider configuration.
 
 1. Verify system user exists: `SELECT * FROM users WHERE id = 'sys-health-user'`
 2. Check Health Worker has `SYSTEM_USER_ID` and `SYSTEM_COMPANY_ID` vars
-3. Ensure `seed-prod.sql` was executed after schema deployment
+3. Ensure migrations were applied: `wrangler d1 migrations list agate-db --remote --config workers/proxy/wrangler.prod.jsonc`
 
 ---
 
@@ -343,9 +347,10 @@ wrangler login
 脚本将自动：
 1. 创建 D1 数据库（如果不存在）
 2. 创建 KV 命名空间（如果不存在）
-3. 部署数据库架构和生产种子数据
+3. 应用数据库迁移（幂等的增量迁移）
 4. 部署三个 Worker（Proxy、Admin、Health）
-5. 初始化超级管理员 API Key
+5. 部署 Admin Frontend (Pages)
+6. 初始化超级管理员 API Key
 
 ---
 
@@ -485,21 +490,24 @@ wrangler kv:namespace create "agate-cache" --preview
 }
 ```
 
-#### 步骤 5：部署数据库架构和种子数据
+#### 步骤 5：应用数据库迁移
 
 ```bash
-# 部署架构
-wrangler d1 execute agate-db --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc
-
-# 部署种子数据（包含健康检查系统用户）
-wrangler d1 execute agate-db --file=./scripts/seed-prod.sql --config workers/proxy/wrangler.prod.jsonc
+# 应用所有待处理的迁移（幂等）
+wrangler d1 migrations apply agate-db --remote --config workers/proxy/wrangler.prod.jsonc
 ```
 
-**种子数据包含：**
-- 系统用户 (`sys-health-user`) 用于健康检查日志记录
-- 系统公司和 API Key 用于健康检查
-- Anthropic 供应商
-- Claude 模型（Opus 4.6、Sonnet 4.6、Haiku 4.5）及定价
+该命令：
+- 跟踪已应用的迁移
+- 仅运行新的迁移
+- 可安全多次执行（幂等）
+
+**迁移包括：**
+- `0001_initial.sql` - 初始数据库架构
+- `0002_update_provider_credentials.sql` - 健康检查字段
+- `0003_update_users_for_system.sql` - 系统用户支持
+- `0004_create_system_user.sql` - 健康检查系统用户
+- `0005_seed_prod_data.sql` - 生产种子数据（供应商、模型、演示公司）
 
 #### 步骤 6：部署 Worker
 
@@ -603,4 +611,4 @@ npm run db:migrate:local
 
 1. 检查系统用户是否存在：`SELECT * FROM users WHERE id = 'sys-health-user'`
 2. 确认 Health Worker 配置了 `SYSTEM_USER_ID` 和 `SYSTEM_COMPANY_ID` 变量
-3. 确保在架构部署后执行了 `seed-prod.sql`
+3. 确保迁移已应用：`wrangler d1 migrations list agate-db --remote --config workers/proxy/wrangler.prod.jsonc`

@@ -71,7 +71,6 @@ npm run dev
 |------|------|
 | [API 文档](./docs/API.md) | 完整的 API 参考 |
 | [部署指南](./docs/DEPLOYMENT.md) | 部署说明 |
-| [E2E 测试](./tests/e2e/README.md) | 端到端测试指南 |
 | [功能测试](./tests/functional/README.md) | 功能测试指南 |
 
 ---
@@ -152,8 +151,8 @@ agate/
 ├── tests/
 │   ├── unit/            # 单元测试
 │   ├── integration/     # 集成测试
-│   ├── functional/      # 功能测试
-│   └── e2e/            # 端到端测试
+│   ├── functional/      # 功能测试（API 端点）
+│   └── fixtures/        # 测试工具和数据
 │
 ├── scripts/             # 部署和工具脚本
 ├── docs/                # 文档

@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../../packages/shared/src/*"],
+      "@shared/types": ["./src/@shared/types.d.ts"]
     },
 
     /* Linting */

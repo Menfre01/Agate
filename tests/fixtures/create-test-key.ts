@@ -3,10 +3,10 @@
  * Create Test API Key Script
  *
  * Generates a real API key using KeyService and outputs it.
- * Usage: npx tsx scripts/create-test-key.ts
+ * Usage: npx tsx tests/fixtures/create-test-key.ts
  */
 
-import { KeyService } from "../workers/admin/src/services/key.service.js";
+import { KeyService } from "../../workers/admin/src/services/key.service.js";
 
 // Mock environment for local development
 const mockEnv = {

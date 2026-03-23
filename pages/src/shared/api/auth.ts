@@ -3,7 +3,7 @@
  */
 
 import { adminApi, userApi } from './request'
-import type { AuthContext } from '@shared/types/api'
+import type { AuthContext } from '@shared/types'
 
 /**
  * 登录 - 验证 API Key 并获取用户信息

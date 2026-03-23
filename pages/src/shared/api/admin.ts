@@ -31,7 +31,7 @@ import type {
   QuotaInfo,
   UpdateQuotaDto,
   QuotaUpdateResponse,
-} from '@shared/types/api'
+} from '@shared/types'
 
 // =============================================================================
 // Users API
@@ -80,7 +80,14 @@ export async function createUser(data: {
 
 export async function updateUser(
   id: string,
-  data: { is_active?: boolean; role?: string; quota_daily?: number }
+  data: {
+    name?: string
+    role?: string
+    company_id?: string
+    department_id?: string
+    quota_daily?: number
+    is_active?: boolean
+  }
 ): Promise<UserResponse> {
   return adminApi.put(`/admin/users/${id}`, data)
 }
@@ -198,6 +205,7 @@ export interface KeyListQuery {
   company_id?: string
   department_id?: string
   is_active?: string | boolean
+  search?: string
 }
 
 export interface KeyListResponse {

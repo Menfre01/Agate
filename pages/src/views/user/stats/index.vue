@@ -76,7 +76,7 @@ import {
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import { getUserTokenUsage } from '@/shared/api'
-import type { TokenUsageSummaryResponse, TokenUsageResponse } from '@shared/types/api'
+import type { TokenUsageSummaryResponse, TokenUsageResponse } from '@shared/types'
 
 const period = ref<'day' | 'week' | 'month'>('week')
 const tokenUsage = ref<TokenUsageSummaryResponse>({

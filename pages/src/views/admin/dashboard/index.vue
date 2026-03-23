@@ -83,7 +83,7 @@ import {
 import * as echarts from 'echarts'
 import type { EChartsOption } from 'echarts'
 import { getUsageStats, getProviderModelStats } from '@/shared/api'
-import type { UsageStatsResponse, ProviderModelStatsResponse } from '@shared/types/api'
+import type { UsageStatsResponse, ProviderModelStatsResponse } from '@shared/types'
 
 const period = ref<'day' | 'week' | 'month'>('week')
 const loading = ref(false)

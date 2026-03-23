@@ -71,7 +71,6 @@ Services available at:
 |----------|-------------|
 | [API Reference](./docs/API.md) | Complete API reference |
 | [Deployment Guide](./docs/DEPLOYMENT.md) | Deployment instructions |
-| [E2E Testing](./tests/e2e/README.md) | End-to-end testing guide |
 | [Functional Testing](./tests/functional/README.md) | Functional testing guide |
 
 ---
@@ -152,8 +151,8 @@ agate/
 ├── tests/
 │   ├── unit/            # Unit tests
 │   ├── integration/     # Integration tests
-│   ├── functional/      # Functional tests
-│   └── e2e/            # End-to-end tests
+│   ├── functional/      # Functional tests (API endpoints)
+│   └── fixtures/        # Test utilities and data
 │
 ├── scripts/             # Deployment and utility scripts
 ├── docs/                # Documentation

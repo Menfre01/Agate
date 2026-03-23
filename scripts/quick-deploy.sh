@@ -3,14 +3,7 @@
 #
 # Fast deployment to Cloudflare Workers with minimal configuration.
 # Deploys Proxy, Admin, Health workers and Admin frontend (Pages).
-#
-# Usage: ./scripts/quick-deploy.sh [proxy_domain] [admin_domain] [account_id]
-#
-# Example:
-#   ./scripts/quick-deploy.sh                                            # No custom domain, auto-detect account
-#   ./scripts/quick-deploy.sh api.example.com admin.example.com        # With custom domains
-#   ./scripts/quick-deploy.sh api.example.com admin.example.com abc... # With domains and account_id
-#   ./scripts/quick-deploy.sh "" "" abc123...                           # No custom domains, specific account_id
+# Uses incremental migrations (wrangler d1 migrations apply) for idempotent DB setup.
 
 set -e
 
@@ -18,18 +11,83 @@ set -e
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-PROXY_DOMAIN="${1:-}"
-ADMIN_DOMAIN="${2:-}"
-ACCOUNT_ID="${3:-}"
+# Help function
+show_help() {
+  cat << 'EOF'
+Agate Quick Deploy
 
-# If only one argument is provided, it might be the account_id
-if [ -n "$PROXY_DOMAIN" ] && [ -z "$ADMIN_DOMAIN" ] && [[ ! "$PROXY_DOMAIN" =~ \. ]]; then
-  ACCOUNT_ID="$PROXY_DOMAIN"
-  PROXY_DOMAIN=""
-  ADMIN_DOMAIN=""
-fi
+Fast deployment to Cloudflare Workers with minimal configuration.
+
+USAGE:
+  ./scripts/quick-deploy.sh [OPTIONS]
+
+OPTIONS:
+  --proxy-domain=xxx    Custom domain for Proxy Worker (e.g., api.example.com)
+  --admin-domain=xxx    Custom domain for Admin Worker (e.g., admin.example.com)
+  --account-id=xxx      Cloudflare Account ID (auto-detected if not provided)
+  -h, --help            Show this help message
+
+EXAMPLES:
+  # Default deployment (workers.dev domains)
+  ./scripts/quick-deploy.sh
+
+  # With custom domains
+  ./scripts/quick-deploy.sh --proxy-domain=api.example.com --admin-domain=admin.example.com
+
+  # With specific account ID
+  ./scripts/quick-deploy.sh --account-id=your-account-id
+
+  # With custom domains and account ID
+  ./scripts/quick-deploy.sh --proxy-domain=api.example.com --admin-domain=admin.example.com --account-id=xxx
+
+WHAT GETS DEPLOYED:
+  • D1 Database (agate-db)
+  • KV Namespace (agate-cache)
+  • Proxy Worker (agate-proxy)
+  • Admin Worker (agate-admin)
+  • Health Worker (agate-health)
+  • Admin Frontend (Pages)
+
+RELATED COMMANDS:
+  ./scripts/quick-undeploy.sh     # Undeploy all resources
+  ./scripts/dev-start.sh          # Start local development
+  ./scripts/dev-stop.sh           # Stop local development
+
+EOF
+  exit 0
+}
+
+# Default values
+PROXY_DOMAIN=""
+ADMIN_DOMAIN=""
+ACCOUNT_ID=""
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --proxy-domain=*)
+      PROXY_DOMAIN="${1#*=}"
+      ;;
+    --admin-domain=*)
+      ADMIN_DOMAIN="${1#*=}"
+      ;;
+    --account-id=*)
+      ACCOUNT_ID="${1#*=}"
+      ;;
+    -h|--help)
+      show_help
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}Agate Quick Deploy (Workers + Pages)${NC}"
@@ -42,7 +100,11 @@ if ! npx wrangler whoami &>/dev/null; then
   npx wrangler login
 fi
 
-ACCOUNT_INFO=$(npx wrangler whoami 2>/dev/null)
+ACCOUNT_INFO=$(npx wrangler whoami 2>/dev/null || echo "")
+if [ -z "$ACCOUNT_INFO" ]; then
+  echo -e "${RED}Failed to get account info${NC}"
+  exit 1
+fi
 echo -e "${GREEN}Logged in${NC}"
 echo "$ACCOUNT_INFO" | head -3
 
@@ -51,7 +113,7 @@ if [ -z "$ACCOUNT_ID" ]; then
   echo -e "\n${YELLOW}No account_id provided, auto-detecting...${NC}"
 
   # Try to get from wrangler whoami
-  ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o 'Account ID.*' | grep -o '[a-f0-9]\{32\}' | head -1)
+  ACCOUNT_ID=$(npx wrangler whoami 2>/dev/null | grep -o 'Account ID.*' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
 
   # If still empty, try from existing config
   if [ -z "$ACCOUNT_ID" ]; then
@@ -68,6 +130,10 @@ fi
 
 echo -e "\n${BLUE}Using Account ID: ${ACCOUNT_ID}${NC}"
 
+# Save project root directory (where this script is located)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PROJECT_ROOT
+
 # Set CLOUDFLARE_ACCOUNT_ID for all wrangler commands
 export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
 
@@ -78,17 +144,30 @@ DB_ID=""
 KV_ID=""
 KV_PREVIEW_ID=""
 
+# Deployment status tracking
+STATUS_D1_DB=0        # 0=pending, 1=success, 2=skipped (exists)
+STATUS_KV=0           # 0=pending, 1=success, 2=skipped (exists)
+STATUS_MIGRATIONS=0    # 0=pending, 1=success, 2=failed
+STATUS_PROXY_WORKER=0  # 0=pending, 1=success, 2=failed
+STATUS_ADMIN_WORKER=0  # 0=pending, 1=success, 2=failed
+STATUS_HEALTH_WORKER=0 # 0=pending, 1=success, 2=failed
+STATUS_PAGES=0        # 0=pending, 1=success, 2=failed
+STATUS_ADMIN_KEY=0    # 0=pending, 1=success, 2=failed
+
+PAGES_URL=""
+
 # ============================================
 # Step 1: Create D1 Database (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[1/8] Setting up D1 Database...${NC}"
+echo -e "\n${YELLOW}[1/9] Setting up D1 Database...${NC}"
 
 # Check if database already exists
-D1_LIST=$(npx wrangler d1 list 2>/dev/null)
+D1_LIST=$(npx wrangler d1 list 2>/dev/null || echo "")
 EXISTING_DB=$(echo "$D1_LIST" | grep -o "$DB_NAME" || true)
 
 if [ -n "$EXISTING_DB" ]; then
   echo -e "${GREEN}Database '$DB_NAME' already exists${NC}"
+  STATUS_D1_DB=2  # skipped (exists)
   # Get existing database ID (UUID format) - extract from table output
   DB_ID=$(echo "$D1_LIST" | grep "$DB_NAME" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 || echo "")
   if [ -z "$DB_ID" ]; then
@@ -97,11 +176,16 @@ if [ -n "$EXISTING_DB" ]; then
   fi
 else
   echo -e "${BLUE}Creating D1 database '$DB_NAME'...${NC}"
-  npx wrangler d1 create "$DB_NAME" >/dev/null 2>&1 || npx wrangler d1 create "$DB_NAME"
-  # Refresh list and get ID
-  D1_LIST=$(npx wrangler d1 list 2>/dev/null)
-  DB_ID=$(echo "$D1_LIST" | grep "$DB_NAME" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 || echo "")
-  echo -e "${GREEN}Database created${NC}"
+  if npx wrangler d1 create "$DB_NAME" >/dev/null 2>&1 || npx wrangler d1 create "$DB_NAME"; then
+    # Refresh list and get ID
+    D1_LIST=$(npx wrangler d1 list 2>/dev/null || echo "")
+    DB_ID=$(echo "$D1_LIST" | grep "$DB_NAME" | grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' | head -1 || echo "")
+    echo -e "${GREEN}Database created${NC}"
+    STATUS_D1_DB=1  # success
+  else
+    echo -e "${RED}Failed to create database${NC}"
+    STATUS_D1_DB=2  # failed
+  fi
 fi
 
 echo -e "${BLUE}Database ID: ${DB_ID}${NC}"
@@ -109,11 +193,11 @@ echo -e "${BLUE}Database ID: ${DB_ID}${NC}"
 # ============================================
 # Step 2: Create KV Namespace (if not exists)
 # ============================================
-echo -e "\n${YELLOW}[2/8] Setting up KV Cache...${NC}"
+echo -e "\n${YELLOW}[2/9] Setting up KV Cache...${NC}"
 
 KV_NAME="agate-cache"
 # Get KV list as JSON
-KV_OUTPUT=$(npx wrangler kv:namespace list 2>/dev/null)
+KV_OUTPUT=$(npx wrangler kv namespace list 2>/dev/null || echo "[]")
 
 # Check for both "agate-cache" and "worker-agate-cache" formats
 if echo "$KV_OUTPUT" | grep -q '"title": "worker-'"$KV_NAME"'"'; then
@@ -126,18 +210,31 @@ fi
 
 if [ -n "$EXISTING_KV" ]; then
   echo -e "${GREEN}KV namespace '$KV_NAME' already exists${NC}"
+  STATUS_KV=2  # skipped (exists)
   # Extract ID from JSON output
-  KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1)
+  KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
   KV_PREVIEW_ID=$(cat .wrangler/config.json 2>/dev/null | grep -A10 "KV_CACHE" | grep -o '"preview_id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
 else
   echo -e "${BLUE}Creating KV namespace '$KV_NAME'...${NC}"
-  npx wrangler kv:namespace create "$KV_NAME" >/dev/null 2>&1 || npx wrangler kv:namespace create "$KV_NAME"
+  if npx wrangler kv namespace create "$KV_NAME" >/dev/null 2>&1 || npx wrangler kv namespace create "$KV_NAME"; then
+    # Refresh KV list to get the ID
+    KV_OUTPUT=$(npx wrangler kv namespace list 2>/dev/null || echo "")
+    # Parse JSON output - wrangler uses spaces around colons in JSON output
+    KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1 || echo "")
 
-  # Get KV IDs from the output
-  KV_OUTPUT=$(npx wrangler kv:namespace create "$KV_NAME" 2>&1)
-  KV_ID=$(echo "$KV_OUTPUT" | grep -o 'id = "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1)
-  KV_PREVIEW_ID=$(echo "$KV_OUTPUT" | grep -o 'preview_id = "[a-f0-9]\{32\}"' | grep -o '[a-f0-9]\{32\}' | head -1)
-  echo -e "${GREEN}KV namespace created${NC}"
+    # Create preview namespace
+    npx wrangler kv namespace create "$KV_NAME" --preview >/dev/null 2>&1 || true
+    KV_PREVIEW_OUTPUT=$(npx wrangler kv namespace list 2>/dev/null || echo "")
+    # For preview, we need to find the one with preview in title or use a different approach
+    # Let's use the wrangler config approach
+    wrangler kv namespace list 2>/dev/null > /tmp/kv_list.txt || true
+
+    echo -e "${GREEN}KV namespace created${NC}"
+    STATUS_KV=1  # success
+  else
+    echo -e "${RED}Failed to create KV namespace${NC}"
+    STATUS_KV=2  # failed
+  fi
 fi
 
 echo -e "${BLUE}KV ID: ${KV_ID}${NC}"
@@ -145,7 +242,7 @@ echo -e "${BLUE}KV ID: ${KV_ID}${NC}"
 # ============================================
 # Step 3: Update Worker Configurations
 # ============================================
-echo -e "\n${YELLOW}[3/8] Creating worker configurations...${NC}"
+echo -e "\n${YELLOW}[3/9] Creating worker configurations...${NC}"
 
 # Function to get zone name from domain
 get_zone_name() {
@@ -175,7 +272,8 @@ cat > workers/proxy/wrangler.prod.jsonc <<_CONFIG_EOF_
     {
       "binding": "DB",
       "database_name": "$DB_NAME",
-      "database_id": "$DB_ID"
+      "database_id": "$DB_ID",
+      "migrations_dir": "../../migrations"
     }
   ],
 
@@ -221,7 +319,8 @@ cat > workers/admin/wrangler.prod.jsonc <<_CONFIG_EOF_
     {
       "binding": "DB",
       "database_name": "$DB_NAME",
-      "database_id": "$DB_ID"
+      "database_id": "$DB_ID",
+      "migrations_dir": "../../migrations"
     }
   ],
 
@@ -279,45 +378,62 @@ fi
 echo -e "${GREEN}Worker configs created${NC}"
 
 # ============================================
-# Step 4: Deploy database schema
+# Step 4: Apply database migrations (idempotent)
 # ============================================
-echo -e "\n${YELLOW}[4/8] Deploying database schema...${NC}"
+echo -e "\n${YELLOW}[4/9] Applying database migrations...${NC}"
 
-# Use proxy worker's config for DB operations (deploy to remote)
-# Ignore errors if tables already exist
-npx wrangler d1 execute "$DB_NAME" --remote --file=./packages/shared/src/db/schema.sql --config workers/proxy/wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Schema already exists or deployment skipped${NC}"
-echo -e "${GREEN}Database schema ready${NC}"
-
-# Seed initial data (to remote)
-echo -e "${BLUE}Seeding initial data...${NC}"
-npx wrangler d1 execute "$DB_NAME" --remote --file=./scripts/seed-prod.sql --config workers/proxy/wrangler.prod.jsonc 2>/dev/null || echo -e "${YELLOW}Seed data already exists or skipped${NC}"
+# Use wrangler d1 migrations apply for idempotent incremental migrations
+# This will track applied migrations and only run new ones
+if npx wrangler d1 migrations apply "$DB_NAME" --remote --config workers/proxy/wrangler.prod.jsonc 2>&1; then
+  echo -e "${GREEN}Database migrations applied${NC}"
+  STATUS_MIGRATIONS=1  # success
+else
+  echo -e "${RED}Failed to apply database migrations${NC}"
+  STATUS_MIGRATIONS=2  # failed
+fi
 
 # ============================================
 # Step 5: Deploy Proxy Worker
 # ============================================
-echo -e "\n${YELLOW}[5/8] Deploying Proxy Worker...${NC}"
+echo -e "\n${YELLOW}[5/9] Deploying Proxy Worker...${NC}"
 
-cd workers/proxy
-npx wrangler deploy --config wrangler.prod.jsonc
-cd ../..
+cd workers/proxy || { echo -e "${RED}Failed to enter workers/proxy directory${NC}"; STATUS_PROXY_WORKER=2; cd ../..; }
 
-echo -e "${GREEN}Proxy Worker deployed${NC}"
+if [ "$STATUS_PROXY_WORKER" != "2" ]; then
+  if npx wrangler deploy --config wrangler.prod.jsonc 2>&1; then
+    cd ../..
+    echo -e "${GREEN}Proxy Worker deployed${NC}"
+    STATUS_PROXY_WORKER=1  # success
+  else
+    cd ../..
+    echo -e "${RED}Failed to deploy Proxy Worker${NC}"
+    STATUS_PROXY_WORKER=2  # failed
+  fi
+fi
 
 # ============================================
 # Step 6: Deploy Admin Worker
 # ============================================
-echo -e "\n${YELLOW}[6/8] Deploying Admin Worker...${NC}"
+echo -e "\n${YELLOW}[6/9] Deploying Admin Worker...${NC}"
 
-cd workers/admin
-npx wrangler deploy --config wrangler.prod.jsonc
-cd ../..
+cd workers/admin || { echo -e "${RED}Failed to enter workers/admin directory${NC}"; STATUS_ADMIN_WORKER=2; cd ../..; }
 
-echo -e "${GREEN}Admin Worker deployed${NC}"
+if [ "$STATUS_ADMIN_WORKER" != "2" ]; then
+  if npx wrangler deploy --config wrangler.prod.jsonc 2>&1; then
+    cd ../..
+    echo -e "${GREEN}Admin Worker deployed${NC}"
+    STATUS_ADMIN_WORKER=1  # success
+  else
+    cd ../..
+    echo -e "${RED}Failed to deploy Admin Worker${NC}"
+    STATUS_ADMIN_WORKER=2  # failed
+  fi
+fi
 
 # ============================================
 # Step 7: Deploy Health Worker
 # ============================================
-echo -e "\n${YELLOW}[7/8] Deploying Health Worker...${NC}"
+echo -e "\n${YELLOW}[7/9] Deploying Health Worker...${NC}"
 
 # Create Health Worker config
 cat > workers/health/wrangler.prod.jsonc <<EOF
@@ -331,7 +447,8 @@ cat > workers/health/wrangler.prod.jsonc <<EOF
     {
       "binding": "DB",
       "database_name": "$DB_NAME",
-      "database_id": "$DB_ID"
+      "database_id": "$DB_ID",
+      "migrations_dir": "../../migrations"
     }
   ],
 
@@ -367,11 +484,19 @@ cat > workers/health/wrangler.prod.jsonc <<EOF
 }
 EOF
 
-cd workers/health
-npx wrangler deploy --config wrangler.prod.jsonc
-cd ../..
+cd workers/health || { echo -e "${RED}Failed to enter workers/health directory${NC}"; STATUS_HEALTH_WORKER=2; cd ../..; }
 
-echo -e "${GREEN}Health Worker deployed (cron: */5 * * * *)${NC}"
+if [ "$STATUS_HEALTH_WORKER" != "2" ]; then
+  if npx wrangler deploy --config wrangler.prod.jsonc 2>&1; then
+    cd ../..
+    echo -e "${GREEN}Health Worker deployed (cron: */5 * * * *)${NC}"
+    STATUS_HEALTH_WORKER=1  # success
+  else
+    cd ../..
+    echo -e "${RED}Failed to deploy Health Worker${NC}"
+    STATUS_HEALTH_WORKER=2  # failed
+  fi
+fi
 
 # ============================================
 # Step 8: Deploy Admin Frontend (Pages)
@@ -380,72 +505,189 @@ echo -e "\n${YELLOW}[8/9] Deploying Admin Frontend (Pages)...${NC}"
 
 # Build the frontend
 echo -e "${BLUE}Building frontend...${NC}"
-cd pages
-pnpm build --silent 2>/dev/null || pnpm build
+cd pages || { echo -e "${RED}Failed to enter pages directory${NC}"; STATUS_PAGES=2; }
 
-# Deploy to Cloudflare Pages
-echo -e "${BLUE}Deploying to Cloudflare Pages...${NC}"
-PAGES_OUTPUT=$(npx wrangler pages deploy dist --project-name=agate-admin 2>&1)
-PAGES_URL=$(echo "$PAGES_OUTPUT" | grep -o 'https://[^ ]*\.pages\.dev' | head -1)
+if [ "$STATUS_PAGES" != "2" ]; then
+  if pnpm build --silent 2>/dev/null; then
+    BUILD_SUCCESS=true
+  elif pnpm build 2>&1; then
+    BUILD_SUCCESS=true
+  else
+    BUILD_SUCCESS=false
+  fi
 
-cd ../..
+  if [ "$BUILD_SUCCESS" = "true" ]; then
+    # Create Pages project if it doesn't exist
+    echo -e "${BLUE}Ensuring Pages project exists...${NC}"
+    npx wrangler pages project create agate-admin --production-branch=main 2>/dev/null || true
 
-echo -e "${GREEN}Admin Frontend deployed${NC}"
-if [ -n "$PAGES_URL" ]; then
-  echo -e "${BLUE}Pages URL: ${PAGES_URL}${NC}"
+    # Deploy to Cloudflare Pages
+    echo -e "${BLUE}Deploying to Cloudflare Pages...${NC}"
+    PAGES_OUTPUT=$(npx wrangler pages deploy dist --project-name=agate-admin --commit-dirty=true 2>&1 || echo "DEPLOY_FAILED")
+    PAGES_URL=$(echo "$PAGES_OUTPUT" | grep -oE 'https://[a-z0-9.-]+\.pages\.dev' | head -1 || echo "")
+
+    cd ../..
+
+    if echo "$PAGES_OUTPUT" | grep -q "DEPLOY_FAILED"; then
+      echo -e "${RED}Failed to deploy to Cloudflare Pages${NC}"
+      STATUS_PAGES=2  # failed
+    elif [ -n "$PAGES_URL" ]; then
+      echo -e "${GREEN}Admin Frontend deployed${NC}"
+      echo -e "${BLUE}Pages URL: ${PAGES_URL}${NC}"
+      STATUS_PAGES=1  # success
+    else
+      echo -e "${YELLOW}Admin Frontend deployed (URL not found in output)${NC}"
+      STATUS_PAGES=1  # success (deployed but URL parsing failed)
+    fi
+  else
+    cd ../..
+    echo -e "${RED}Failed to build Admin Frontend${NC}"
+    STATUS_PAGES=2  # failed
+  fi
+else
+  cd ../..
 fi
 
 # ============================================
-# Step 9: Initialize Super Admin API Key
+# Step 9: Initialize Super Admin API Key (idempotent)
 # ============================================
 echo -e "\n${YELLOW}[9/9] Initializing Super Admin API Key...${NC}"
 
-# Run the init script and capture output (use admin worker's config, with remote flag)
-INIT_OUTPUT=$(node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc --remote 2>&1)
+# Check if admin key file already exists (from previous deployment)
+if [ -f .admin-api-key ]; then
+  ADMIN_KEY=$(cat .admin-api-key || echo "")
+  echo -e "${GREEN}Admin API Key already exists${NC}"
+  echo -e "${BLUE}Key Prefix: ${ADMIN_KEY:0:12}...${NC}"
+  STATUS_ADMIN_KEY=1  # success
+else
+  # Run the init script and capture output (use admin worker's config, with remote flag)
+  # Use PROJECT_ROOT for correct path resolution
+  INIT_OUTPUT=$(node "$PROJECT_ROOT/scripts/init-admin-key.js" --prod --config "$PROJECT_ROOT/workers/admin/wrangler.prod.jsonc" --remote 2>&1 || echo "")
 
-echo "$INIT_OUTPUT"
+  echo "$INIT_OUTPUT"
 
-# Extract the API key from output
-ADMIN_KEY=$(echo "$INIT_OUTPUT" | grep -o 'sk_[0-9]*_[a-f0-9]*' | head -1)
+  # Extract the API key from output (only if newly created)
+  ADMIN_KEY=$(echo "$INIT_OUTPUT" | grep -o 'sk_[0-9]*_[a-f0-9]*' | head -1 || echo "")
+
+  # If extraction failed but output says key exists, try reading from file
+  if [ -z "$ADMIN_KEY" ] && echo "$INIT_OUTPUT" | grep -q "already exists"; then
+    ADMIN_KEY=$(cat .admin-api-key 2>/dev/null || echo "")
+  fi
+
+  if [ -n "$ADMIN_KEY" ]; then
+    STATUS_ADMIN_KEY=1  # success
+  else
+    echo -e "${RED}Failed to initialize Admin API Key${NC}"
+    STATUS_ADMIN_KEY=2  # failed
+  fi
+fi
 
 # ============================================
 # Summary
 # ============================================
 echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}Deployment Complete!${NC}"
+echo -e "${GREEN}Deployment Summary${NC}"
 echo -e "${GREEN}========================================${NC}"
 
-# Get the worker URLs
-PROXY_WORKER_URL="https://agate-proxy.${ACCOUNT_ID}.workers.dev"
-ADMIN_WORKER_URL="https://agate-admin.${ACCOUNT_ID}.workers.dev"
+# Helper function to show status
+show_status() {
+  local name="$1"
+  local status="$2"
+  case $status in
+    0) echo -e "${YELLOW}⏳ ${name}: Pending${NC}" ;;
+    1) echo -e "${GREEN}✓ ${name}: Success${NC}" ;;
+    2) echo -e "${RED}✗ ${name}: Failed${NC}" ;;
+    *) echo -e "${BLUE}○ ${name}: Skipped (exists)${NC}" ;;
+  esac
+}
 
-if [ -n "$PROXY_DOMAIN" ]; then
-  PROXY_WORKER_URL="https://${PROXY_DOMAIN}"
-fi
+echo ""
+echo -e "${BLUE}Resource Status:${NC}"
+show_status "D1 Database ($DB_NAME)" "$STATUS_D1_DB"
+show_status "KV Namespace ($KV_NAME)" "$STATUS_KV"
+show_status "Database Migrations" "$STATUS_MIGRATIONS"
+show_status "Proxy Worker" "$STATUS_PROXY_WORKER"
+show_status "Admin Worker" "$STATUS_ADMIN_WORKER"
+show_status "Health Worker" "$STATUS_HEALTH_WORKER"
+show_status "Admin Frontend (Pages)" "$STATUS_PAGES"
+show_status "Admin API Key" "$STATUS_ADMIN_KEY"
 
-if [ -n "$ADMIN_DOMAIN" ]; then
-  ADMIN_WORKER_URL="https://${ADMIN_DOMAIN}"
-fi
+# Count failures
+FAILURES=0
+[ "$STATUS_D1_DB" = "2" ] && ((FAILURES++))
+[ "$STATUS_KV" = "2" ] && ((FAILURES++))
+[ "$STATUS_MIGRATIONS" = "2" ] && ((FAILURES++))
+[ "$STATUS_PROXY_WORKER" = "2" ] && ((FAILURES++))
+[ "$STATUS_ADMIN_WORKER" = "2" ] && ((FAILURES++))
+[ "$STATUS_HEALTH_WORKER" = "2" ] && ((FAILURES++))
+[ "$STATUS_PAGES" = "2" ] && ((FAILURES++))
+[ "$STATUS_ADMIN_KEY" = "2" ] && ((FAILURES++))
 
-echo -e "\n${BLUE}Your Gateway is live at:${NC}"
-echo -e "${GREEN}Proxy:  $PROXY_WORKER_URL${NC}"
-echo -e "${GREEN}Admin:  $ADMIN_WORKER_URL${NC}"
-echo -e "${GREEN}Health: https://agate-health.${ACCOUNT_ID}.workers.dev (cron)${NC}"
-if [ -n "$PAGES_URL" ]; then
-  echo -e "${GREEN}Frontend: $PAGES_URL${NC}"
+echo ""
+if [ $FAILURES -eq 0 ]; then
+  echo -e "${GREEN}========================================${NC}"
+  echo -e "${GREEN}All resources deployed successfully!${NC}"
+  echo -e "${GREEN}========================================${NC}"
 else
-  echo -e "${GREEN}Frontend: https://agate-admin.pages.dev${NC}"
+  echo -e "${RED}========================================${NC}"
+  echo -e "${RED}${FAILURES} resource(s) failed to deploy${NC}"
+  echo -e "${RED}========================================${NC}"
+  echo -e "${YELLOW}This deployment is idempotent - you can safely run it again to retry failed resources.${NC}"
 fi
 
-echo -e "\n${YELLOW}Next steps:${NC}"
-echo -e "1. Test health check: ${GREEN}curl $PROXY_WORKER_URL/health${NC}"
-echo -e "2. Test admin access: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $ADMIN_WORKER_URL/admin/keys${NC}"
-echo -e "3. Test proxy API: ${GREEN}curl -H \"x-api-key: $ADMIN_KEY\" $PROXY_WORKER_URL/v1/models${NC}"
-echo -e "4. Open admin frontend: ${GREEN}https://agate-admin.pages.dev${NC}"
-echo -e "5. Configure your custom domain DNS (if applicable)"
-echo -e "\n${RED}IMPORTANT: Save your admin API key!${NC}"
-echo -e "${GREEN}$ADMIN_KEY${NC}"
-echo -e "${RED}It is also saved in .admin-api-key${NC}"
+# Show URLs only if deployments succeeded
+echo ""
+if [ "$STATUS_PROXY_WORKER" = "1" ] || [ "$STATUS_ADMIN_WORKER" = "1" ] || [ "$STATUS_HEALTH_WORKER" = "1" ] || [ "$STATUS_PAGES" = "1" ]; then
+  echo -e "${BLUE}Deployed URLs:${NC}"
+
+  # Get the worker URLs
+  PROXY_WORKER_URL="https://agate-proxy.${ACCOUNT_ID}.workers.dev"
+  ADMIN_WORKER_URL="https://agate-admin.${ACCOUNT_ID}.workers.dev"
+
+  if [ -n "$PROXY_DOMAIN" ]; then
+    PROXY_WORKER_URL="https://${PROXY_DOMAIN}"
+  fi
+
+  if [ -n "$ADMIN_DOMAIN" ]; then
+    ADMIN_WORKER_URL="https://${ADMIN_DOMAIN}"
+  fi
+
+  [ "$STATUS_PROXY_WORKER" = "1" ] && echo -e "${GREEN}Proxy:  ${PROXY_WORKER_URL}${NC}"
+  [ "$STATUS_ADMIN_WORKER" = "1" ] && echo -e "${GREEN}Admin:  ${ADMIN_WORKER_URL}${NC}"
+  [ "$STATUS_HEALTH_WORKER" = "1" ] && echo -e "${GREEN}Health: https://agate-health.${ACCOUNT_ID}.workers.dev (cron)${NC}"
+
+  if [ "$STATUS_PAGES" = "1" ]; then
+    if [ -n "$PAGES_URL" ]; then
+      echo -e "${GREEN}Frontend: ${PAGES_URL}${NC}"
+    else
+      echo -e "${GREEN}Frontend: https://agate-admin.pages.dev${NC}"
+    fi
+  fi
+fi
+
+# Show next steps if key is available
+if [ -n "$ADMIN_KEY" ]; then
+  echo ""
+  echo -e "${YELLOW}Next steps:${NC}"
+  echo -e "1. Test health check: ${GREEN}curl ${PROXY_WORKER_URL}/health${NC}"
+  echo -e "2. Test admin access: ${GREEN}curl -H \"x-api-key: ${ADMIN_KEY}\" ${ADMIN_WORKER_URL}/admin/keys${NC}"
+  echo -e "3. Test proxy API: ${GREEN}curl -H \"x-api-key: ${ADMIN_KEY}\" ${PROXY_WORKER_URL}/v1/models${NC}"
+  if [ "$STATUS_PAGES" = "1" ]; then
+    echo -e "4. Open admin frontend: ${GREEN}https://agate-admin.pages.dev${NC}"
+  fi
+  echo -e "5. Configure your custom domain DNS (if applicable)"
+  echo ""
+  echo -e "${RED}IMPORTANT: Save your admin API key!${NC}"
+  echo -e "${GREEN}${ADMIN_KEY}${NC}"
+  echo -e "${RED}It is also saved in .admin-api-key${NC}"
+fi
+
+# Show retry message if there were failures
+if [ $FAILURES -gt 0 ]; then
+  echo ""
+  echo -e "${YELLOW}To retry failed resources, run again:${NC}"
+  echo -e "${GREEN}./scripts/quick-deploy.sh${NC}"
+fi
 
 # Save deployment info
 if [ -n "$PAGES_URL" ]; then
