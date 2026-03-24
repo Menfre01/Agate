@@ -23,7 +23,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
-pages/.env.production
+# pages/.env.production - committed for production build
 
 # OS files
 .DS_Store
