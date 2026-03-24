@@ -46,3 +46,7 @@ wrangler.prod.jsonc
 # Private documentation
 prd.md
 docs/internal/
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/projects/*/memory/MEMORY.md
