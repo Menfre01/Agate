@@ -35,11 +35,12 @@ CREATE TABLE departments (
 );
 
 -- Users table
+-- PRD V2 Phase 1: company_id is nullable (simplified user management)
 CREATE TABLE users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     name TEXT,
-    company_id TEXT NOT NULL,
+    company_id TEXT,
     department_id TEXT,
     role TEXT DEFAULT 'user',
     quota_daily INTEGER DEFAULT 0,
@@ -49,8 +50,8 @@ CREATE TABLE users (
     last_reset_at INTEGER,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES companies(id),
-    FOREIGN KEY (department_id) REFERENCES departments(id)
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
+    FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
 );
 
 -- ============================================
@@ -115,12 +116,13 @@ CREATE TABLE department_models (
 -- ============================================
 
 -- API Keys table
+-- PRD V2 Phase 1: company_id is nullable (simplified user management)
 CREATE TABLE api_keys (
     id TEXT PRIMARY KEY,
     key_hash TEXT UNIQUE NOT NULL,
     key_prefix TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    company_id TEXT NOT NULL,
+    company_id TEXT,
     department_id TEXT,
     name TEXT,
     quota_daily INTEGER DEFAULT 0,
@@ -136,7 +138,7 @@ CREATE TABLE api_keys (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (company_id) REFERENCES companies(id)
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL
 );
 
 -- Provider Credentials table
@@ -161,11 +163,12 @@ CREATE TABLE provider_credentials (
 -- ============================================
 
 -- Usage Logs table
+-- PRD V2 Phase 1: company_id is nullable (simplified user management)
 CREATE TABLE usage_logs (
     id TEXT PRIMARY KEY,
     api_key_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    company_id TEXT NOT NULL,
+    company_id TEXT,
     department_id TEXT,
     provider_id TEXT NOT NULL,
     model_id TEXT NOT NULL,

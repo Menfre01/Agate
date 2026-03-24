@@ -954,19 +954,21 @@ export interface QuotaUpdateResponse {
 
 /**
  * Create User request DTO
+ *
+ * PRD V2 第一期：简化用户系统，不强制要求组织架构字段
  */
 export interface CreateUserDto {
   /** User email */
   email: string;
   /** User name */
-  name: string;
-  /** Company ID */
-  company_id: string;
-  /** Department ID (optional) */
+  name?: string;
+  /** Company ID (optional, reserved for V2 Phase 2) */
+  company_id?: string;
+  /** Department ID (optional, reserved for V2 Phase 2) */
   department_id?: string;
   /** User role */
   role?: UserRole;
-  /** Daily quota limit */
+  /** Daily quota limit (primarily for system users in Phase 1) */
   quota_daily?: number;
 }
 

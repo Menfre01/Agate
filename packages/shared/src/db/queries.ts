@@ -74,7 +74,7 @@ export interface InternalCreateUserDto {
   id: string;
   email: string;
   name?: string;
-  company_id: string;
+  company_id?: string;  // PRD V2: 第一期不强制要求，留待第二期使用
   department_id?: string;
   role?: string;
   quota_daily?: number;
@@ -564,6 +564,8 @@ export class Queries {
   /**
    * List all users
    *
+   * PRD V2 第一期：不依赖组织架构排序
+   *
    * @returns Array of all users
    */
   async listAllUsers(): Promise<any[]> {
@@ -576,7 +578,7 @@ export class Queries {
         FROM users u
         LEFT JOIN companies c ON u.company_id = c.id
         LEFT JOIN departments d ON u.department_id = d.id
-        ORDER BY u.company_id, u.created_at DESC
+        ORDER BY u.created_at DESC
       `)
       .all();
     return result.results;
@@ -601,7 +603,7 @@ export class Queries {
         data.id,
         data.email,
         data.name ?? null,
-        data.company_id,
+        data.company_id ?? null,  // PRD V2: 第一期不强制要求
         data.department_id ?? null,
         data.role ?? 'user',
         data.quota_daily ?? 0,
@@ -1612,15 +1614,17 @@ export class Queries {
   /**
    * Get active credentials for a provider
    *
+   * PRD V2 Phase 1: Removed priority/weight (using consistent hash instead)
+   *
    * @param providerId - Provider ID
-   * @returns Array of active credentials sorted by priority
+   * @returns Array of active credentials
    */
   async getActiveCredentialsForProvider(providerId: string): Promise<ProviderCredential[]> {
     const result = await this.db
       .prepare(
         `SELECT * FROM provider_credentials
          WHERE provider_id = ?1 AND is_active = 1
-         ORDER BY priority DESC, weight DESC`
+         ORDER BY created_at DESC`
       )
       .bind(providerId)
       .all<ProviderCredential>();

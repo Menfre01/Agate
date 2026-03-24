@@ -94,9 +94,15 @@ export class AuthService {
     const authContext = await this.buildAuthContext(keyData);
 
     // Cache the validated key with user/company info
-    const [user, company, department] = await Promise.all([
-      queries.getUser(this.db, keyData.user_id),
-      queries.getCompany(this.db, keyData.company_id),
+    // PRD V2 Phase 1: Use user's company_id if api_keys.company_id is null
+    const user = await queries.getUser(this.db, keyData.user_id);
+    if (!user) {
+      throw new UnauthorizedError("User not found");
+    }
+    const companyId = keyData.company_id ?? user.company_id;
+
+    const [company, department] = await Promise.all([
+      queries.getCompany(this.db, companyId),
       keyData.department_id ? queries.getDepartment(this.db, keyData.department_id) : Promise.resolve(null),
     ]);
 
@@ -191,16 +197,21 @@ export class AuthService {
    * @returns Complete authentication context
    */
   private async buildAuthContext(keyData: ApiKey): Promise<AuthContext> {
-    // Fetch user and company data
-    const [user, company] = await Promise.all([
-      queries.getUser(this.db, keyData.user_id),
-      queries.getCompany(this.db, keyData.company_id),
-    ]);
+    // Fetch user first
+    const user = await queries.getUser(this.db, keyData.user_id);
 
     if (!user) {
       throw new UnauthorizedError("User not found");
     }
 
+    // PRD V2 Phase 1: company_id is nullable in api_keys
+    // Fall back to user's company_id if api_keys.company_id is null
+    const companyId = keyData.company_id ?? user.company_id;
+    if (!companyId) {
+      throw new UnauthorizedError("Company not found");
+    }
+
+    const company = await queries.getCompany(this.db, companyId);
     if (!company) {
       throw new UnauthorizedError("Company not found");
     }

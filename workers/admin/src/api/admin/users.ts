@@ -105,31 +105,42 @@ export async function listUsers(
 
 /**
  * Handles POST /admin/users - Create new user.
+ *
+ * PRD V2 第一期设计：
+ * - 简化用户系统，仅支持 API Key 认证
+ * - 不强制要求 company_id/department_id（组织架构留待第二期）
+ * - 支持创建系统用户用于健康检查
  */
 export async function createUser(
   request: Request,
   env: Env,
   context: RequestContext
 ): Promise<Response> {
-  const body = await request.json() as { id?: string; email: string; name?: string; company_id: string; department_id?: string; role?: string; quota_daily?: number };
+  const body = await request.json() as {
+    id?: string;
+    email: string;
+    name?: string;
+    company_id?: string;
+    department_id?: string;
+    role?: string;
+    quota_daily?: number;
+  };
+
+  // Validate required fields
+  if (!body.email) {
+    throw new ValidationError("Missing required field: email");
+  }
 
   // Generate ID if not provided
   const data: CreateUserDto = {
     id: body.id || `u_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
     email: body.email,
     name: body.name,
-    company_id: body.company_id,
+    company_id: body.company_id,  // Optional in V2 Phase 1
     department_id: body.department_id,
     role: body.role,
     quota_daily: body.quota_daily ?? 0,
   };
-
-  if (!data.email) {
-    throw new ValidationError("Missing required field: email");
-  }
-  if (!data.company_id) {
-    throw new ValidationError("Missing required field: company_id");
-  }
 
   // Check for duplicate email
   const existingByEmail = await queries.getUserByEmail(env.DB, data.email);
@@ -137,10 +148,12 @@ export async function createUser(
     throw new ConflictError("User", "email", data.email);
   }
 
-  // Verify company exists
-  const company = await queries.getCompany(env.DB, data.company_id);
-  if (!company) {
-    throw new NotFoundError("Company", data.company_id);
+  // Verify company exists if provided (for future V2 Phase 2)
+  if (data.company_id) {
+    const company = await queries.getCompany(env.DB, data.company_id);
+    if (!company) {
+      throw new NotFoundError("Company", data.company_id);
+    }
   }
 
   // Verify department exists if provided
