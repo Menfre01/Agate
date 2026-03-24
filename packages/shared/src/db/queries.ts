@@ -836,6 +836,37 @@ export class Queries {
     return result.success && (result.meta.rows_read ?? 0) > 0;
   }
 
+  /**
+   * Get the cheapest model for a provider (for health check auto-selection)
+   *
+   * Per PRD V2 Section 2.3.2: Automatically select the cheapest model for health checks
+   *
+   * @param providerId - Provider ID
+   * @returns Model info (id, model_id, actual_model_id) or null if no models found
+   */
+  async getCheapestModelForProvider(providerId: string): Promise<{
+    id: string;
+    model_id: string;
+    actual_model_id: string | null;
+  } | null> {
+    const result = await this.db
+      .prepare(`
+        SELECT m.id, m.model_id, mp.actual_model_id
+        FROM model_providers mp
+        INNER JOIN models m ON mp.model_id = m.id
+        WHERE mp.provider_id = ?1 AND mp.is_active = 1 AND m.is_active = 1
+        ORDER BY mp.input_price ASC
+        LIMIT 1
+      `)
+      .bind(providerId)
+      .first<{
+        id: string;
+        model_id: string;
+        actual_model_id: string | null;
+      }>();
+    return result || null;
+  }
+
   // ============================================
   // Model CRUD Operations
   // ============================================
@@ -1077,6 +1108,7 @@ export class Queries {
     id: string;
     model_id: string;
     provider_id: string;
+    actual_model_id?: string | null;
     input_price: number;
     output_price: number;
   }): Promise<ModelProvider> {
@@ -1084,10 +1116,10 @@ export class Queries {
     const result = await this.db
       .prepare(
         `INSERT INTO model_providers (
-          id, model_id, provider_id, input_price, output_price, is_active, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)`
+          id, model_id, provider_id, actual_model_id, input_price, output_price, is_active, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)`
       )
-      .bind(data.id, data.model_id, data.provider_id, data.input_price, data.output_price, now)
+      .bind(data.id, data.model_id, data.provider_id, data.actual_model_id ?? null, data.input_price, data.output_price, now)
       .run();
 
     if (!result.success) {
@@ -1109,15 +1141,20 @@ export class Queries {
     modelId: string,
     providerId: string,
     data: {
+      actual_model_id?: string | null;
       input_price?: number;
       output_price?: number;
       is_active?: boolean;
     }
   ): Promise<ModelProvider> {
     const updates: string[] = [];
-    const params: (string | number | boolean)[] = [];
+    const params: (string | number | boolean | null)[] = [];
     let paramIndex = 1;
 
+    if (data.actual_model_id !== undefined) {
+      updates.push(`actual_model_id = ?${paramIndex++}`);
+      params.push(data.actual_model_id);
+    }
     if (data.input_price !== undefined) {
       updates.push(`input_price = ?${paramIndex++}`);
       params.push(data.input_price);
@@ -1997,6 +2034,8 @@ export const createProvider = (db: D1Database, data: InternalCreateProviderDto) 
 export const updateProvider = (db: D1Database, id: string, data: InternalUpdateProviderDto) =>
   getQueries(db).updateProvider(id, data);
 export const deleteProvider = (db: D1Database, id: string) => getQueries(db).deleteProvider(id);
+export const getCheapestModelForProvider = (db: D1Database, providerId: string) =>
+  getQueries(db).getCheapestModelForProvider(providerId);
 
 // Model operations
 export const getModel = (db: D1Database, id: string) => getQueries(db).getModel(id);
@@ -2683,6 +2722,8 @@ export const updateApiKeyLastUsed = (db: D1Database, apiKeyId: string) =>
 /**
  * Get all active credentials for health checking
  *
+ * Per PRD V2 Section 2.3.2: Automatically select the cheapest model for health checks
+ *
  * @param db - D1 Database
  * @returns Array of all active credentials with provider info
  */
@@ -2695,9 +2736,9 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
   health_status: string;
   provider_name: string;
   provider_base_url: string;
-  /** Internal model ID (first active model for this provider) */
+  /** Internal model ID (cheapest active model for this provider) */
   health_check_model_id: string;
-  /** Upstream model name (first active model for this provider) */
+  /** Upstream model name (cheapest active model for this provider) */
   health_check_model_name: string;
 }>> => {
   const result = await db.prepare(`
@@ -2715,15 +2756,15 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
         FROM model_providers mp
         INNER JOIN models m ON mp.model_id = m.id
         WHERE mp.provider_id = p.id AND mp.is_active = 1 AND m.is_active = 1
-        ORDER BY m.created_at ASC
+        ORDER BY mp.input_price ASC
         LIMIT 1
       ) as health_check_model_id,
       (
-        SELECT m.model_id
+        SELECT COALESCE(mp.actual_model_id, m.model_id)
         FROM model_providers mp
         INNER JOIN models m ON mp.model_id = m.id
         WHERE mp.provider_id = p.id AND mp.is_active = 1 AND m.is_active = 1
-        ORDER BY m.created_at ASC
+        ORDER BY mp.input_price ASC
         LIMIT 1
       ) as health_check_model_name
     FROM provider_credentials pc

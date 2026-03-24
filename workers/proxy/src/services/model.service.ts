@@ -345,6 +345,7 @@ export class ModelService {
       id: generateId(),
       model_id: modelId,
       provider_id: dto.provider_id,
+      actual_model_id: dto.actual_model_id ?? null,
       input_price: dto.input_price ?? 0,
       output_price: dto.output_price ?? 0,
     });
@@ -353,6 +354,7 @@ export class ModelService {
       model_id: modelId,
       provider_id: dto.provider_id,
       provider_name: provider.name,
+      actual_model_id: result.actual_model_id,
       input_price: result.input_price,
       output_price: result.output_price,
       is_active: Boolean(result.is_active),
@@ -388,6 +390,7 @@ export class ModelService {
       model_id: modelId,
       provider_id: mp.provider_id,
       provider_name: mp.provider_name,
+      actual_model_id: mp.actual_model_id,
       input_price: mp.input_price,
       output_price: mp.output_price,
       is_active: Boolean(mp.is_active),
@@ -406,6 +409,7 @@ export class ModelService {
     const providers = modelProviders.map((mp) => ({
       provider_id: mp.provider_id,
       provider_name: mp.provider_name,
+      actual_model_id: mp.actual_model_id,
       input_price: mp.input_price,
       output_price: mp.output_price,
       is_active: Boolean(mp.is_active),

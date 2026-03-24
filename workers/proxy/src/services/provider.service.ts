@@ -38,6 +38,8 @@ export interface SelectedCredential {
   credentialId: string;
   /** Decrypted API key for upstream request */
   apiKey: string;
+  /** Actual model ID to use for upstream API calls (may differ from requested model_id) */
+  actualModelId: string | null;
 }
 
 /**
@@ -283,6 +285,9 @@ export class ProviderService {
       });
     }
 
+    // Auto-select cheapest model for health checks (PRD V2 Section 2.3.2)
+    const cheapestModel = await queries.getCheapestModelForProvider(this.db, providerId);
+
     const now = Date.now();
     const credential: ProviderCredential = {
       id: generateId(),
@@ -291,7 +296,7 @@ export class ProviderService {
       api_key_encrypted: encryptedKey,
       base_url: dto.base_url ?? null,
       is_active: true,
-      health_check_model_id: null, // Will be auto-selected by health check worker
+      health_check_model_id: cheapestModel?.id ?? null,
       health_status: "unknown",
       last_health_check: null,
       last_check_success: null,
@@ -377,7 +382,7 @@ export class ProviderService {
     const selectedProvider = consistentHashSelect(
       modelProviders,
       providerHash.toString()
-    ) as { provider_id: string; is_active: boolean };
+    ) as { provider_id: string; is_active: boolean; actual_model_id: string | null };
 
     // 3. Get provider details
     const provider = await queries.getProvider(this.db, selectedProvider.provider_id);
@@ -405,6 +410,7 @@ export class ProviderService {
       apiVersion: provider.api_version,
       credentialId: credential.id,
       apiKey,
+      actualModelId: selectedProvider.actual_model_id,
     };
   }
 

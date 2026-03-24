@@ -169,6 +169,7 @@ export interface Model {
 /**
  * ModelProvider entity for n:n model-provider relationship
  * @see prd.md Section 3.2.2
+ * @see PRD V2 Section 2.5 (actual_model_id)
  */
 export interface ModelProvider {
   /** Unique identifier */
@@ -177,6 +178,8 @@ export interface ModelProvider {
   model_id: string;
   /** Provider ID */
   provider_id: string;
+  /** Actual model ID for upstream API calls (NULL = use model_id) */
+  actual_model_id: string | null;
   /** Input price per 1K tokens (USD) */
   input_price: number;
   /** Output price per 1K tokens (USD) */
@@ -704,6 +707,8 @@ export interface ModelResponse {
     provider_id: string;
     /** Provider name */
     provider_name: string;
+    /** Actual model ID for upstream API calls (NULL = use model_id) */
+    actual_model_id: string | null;
     /** Input price per 1K tokens */
     input_price: number;
     /** Output price per 1K tokens */
@@ -723,6 +728,8 @@ export interface ModelResponse {
 export interface AddModelProviderDto {
   /** Provider ID */
   provider_id: string;
+  /** Actual model ID for upstream API calls (optional) */
+  actual_model_id?: string;
   /** Input price per 1K tokens */
   input_price?: number;
   /** Output price per 1K tokens */
@@ -739,6 +746,8 @@ export interface ModelProviderResponse {
   provider_id: string;
   /** Provider name */
   provider_name: string;
+  /** Actual model ID for upstream API calls (NULL = use model_id) */
+  actual_model_id: string | null;
   /** Input price per 1K tokens */
   input_price: number;
   /** Output price per 1K tokens */

@@ -164,7 +164,8 @@ export class ProxyService {
     );
 
     // Build upstream request and get actual upstream model name
-    const upstreamModel = model.alias ?? request.model;
+    // Priority: credential.actualModelId > model.alias > request.model
+    const upstreamModel = credential.actualModelId ?? model.alias ?? request.model;
     const upstreamRequest = this.buildUpstreamRequest(
       request,
       credential,

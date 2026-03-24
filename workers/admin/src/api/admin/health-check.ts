@@ -133,9 +133,17 @@ export async function triggerCredentialHealthCheck(
     systemApiKeyResult.id
   );
 
-  // Update health status
-  const newStatus = result.success ? "healthy" : "unhealthy";
-  await queries.updateCredentialHealth(env.DB, credentialId, newStatus);
+  // Update health status with consecutive_failures tracking (PRD V2 Section 2.4.5)
+  let newStatus: string;
+  if (result.success) {
+    // Success: reset consecutive_failures and mark healthy
+    await queries.recordCredentialSuccess(env.DB, credentialId);
+    newStatus = "healthy";
+  } else {
+    // Failure: increment consecutive_failures, auto-mark unhealthy if >= 3
+    const updated = await queries.incrementCredentialFailure(env.DB, credentialId);
+    newStatus = updated.consecutive_failures >= 3 ? "unhealthy" : "unknown";
+  }
 
   return withResponseLogging(
     Response.json({

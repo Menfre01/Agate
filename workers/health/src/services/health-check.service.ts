@@ -190,9 +190,14 @@ export class HealthCheckService {
         summary.failed++;
       }
 
-      // Update health status in database
-      const newStatus = result.success ? "healthy" : "unhealthy";
-      await queries.updateCredentialHealth(this.db, cred.id, newStatus);
+      // Update health status with consecutive_failures tracking (PRD V2 Section 2.4.5)
+      if (result.success) {
+        // Success: reset consecutive_failures and mark healthy
+        await queries.recordCredentialSuccess(this.db, cred.id);
+      } else {
+        // Failure: increment consecutive_failures, auto-mark unhealthy if >= 3
+        await queries.incrementCredentialFailure(this.db, cred.id);
+      }
     }
 
     return summary;
