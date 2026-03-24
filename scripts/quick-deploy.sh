@@ -261,7 +261,7 @@ get_zone_name() {
 }
 
 # Create Proxy Worker config
-cat > workers/proxy/wrangler.prod.jsonc <<_CONFIG_EOF_
+cat > "$PROJECT_ROOT/workers/proxy/wrangler.prod.jsonc" <<_CONFIG_EOF_
 {
   "name": "agate-proxy",
   "compatibility_date": "2024-01-01",
@@ -305,10 +305,10 @@ _CONFIG_EOF_
 
 # Debug: check generated file
 echo "DEBUG: Proxy config file last 5 lines:"
-tail -5 workers/proxy/wrangler.prod.jsonc
+tail -5 "$PROJECT_ROOT/workers/proxy/wrangler.prod.jsonc"
 
 # Create Admin Worker config
-cat > workers/admin/wrangler.prod.jsonc <<_CONFIG_EOF_
+cat > "$PROJECT_ROOT/workers/admin/wrangler.prod.jsonc" <<_CONFIG_EOF_
 {
   "name": "agate-admin",
   "compatibility_date": "2024-01-01",
@@ -356,8 +356,8 @@ if [ -n "$PROXY_DOMAIN" ]; then
   TEMP_FILE=$(mktemp)
   jq --arg domain "$PROXY_DOMAIN" --arg zone "$ZONE_NAME" \
     '.routes = [{"pattern": "\($domain)/*", "zone_name": "\($zone)"}]' \
-    workers/proxy/wrangler.prod.jsonc > "$TEMP_FILE"
-  mv "$TEMP_FILE" workers/proxy/wrangler.prod.jsonc
+    "$PROJECT_ROOT/workers/proxy/wrangler.prod.jsonc" > "$TEMP_FILE"
+  mv "$TEMP_FILE" "$PROJECT_ROOT/workers/proxy/wrangler.prod.jsonc"
   echo -e "${GREEN}Proxy domain: $PROXY_DOMAIN (zone: $ZONE_NAME)${NC}"
 fi
 
@@ -366,8 +366,8 @@ if [ -n "$ADMIN_DOMAIN" ]; then
   TEMP_FILE=$(mktemp)
   jq --arg domain "$ADMIN_DOMAIN" --arg zone "$ZONE_NAME" \
     '.routes = [{"pattern": "\($domain)/*", "zone_name": "\($zone)"}]' \
-    workers/admin/wrangler.prod.jsonc > "$TEMP_FILE"
-  mv "$TEMP_FILE" workers/admin/wrangler.prod.jsonc
+    "$PROJECT_ROOT/workers/admin/wrangler.prod.jsonc" > "$TEMP_FILE"
+  mv "$TEMP_FILE" "$PROJECT_ROOT/workers/admin/wrangler.prod.jsonc"
   echo -e "${GREEN}Admin domain: $ADMIN_DOMAIN (zone: $ZONE_NAME)${NC}"
 fi
 
@@ -384,7 +384,7 @@ echo -e "\n${YELLOW}[4/9] Applying database migrations...${NC}"
 
 # Use wrangler d1 migrations apply for idempotent incremental migrations
 # This will track applied migrations and only run new ones
-if npx wrangler d1 migrations apply "$DB_NAME" --remote --config workers/proxy/wrangler.prod.jsonc 2>&1; then
+if npx wrangler d1 migrations apply "$DB_NAME" --remote --config "$PROJECT_ROOT/workers/proxy/wrangler.prod.jsonc" 2>&1; then
   echo -e "${GREEN}Database migrations applied${NC}"
   STATUS_MIGRATIONS=1  # success
 else
@@ -397,15 +397,15 @@ fi
 # ============================================
 echo -e "\n${YELLOW}[5/9] Deploying Proxy Worker...${NC}"
 
-cd workers/proxy || { echo -e "${RED}Failed to enter workers/proxy directory${NC}"; STATUS_PROXY_WORKER=2; cd ../..; }
+cd "$PROJECT_ROOT/workers/proxy" || { echo -e "${RED}Failed to enter workers/proxy directory${NC}"; STATUS_PROXY_WORKER=2; }
 
 if [ "$STATUS_PROXY_WORKER" != "2" ]; then
   if npx wrangler deploy --config wrangler.prod.jsonc 2>&1; then
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${GREEN}Proxy Worker deployed${NC}"
     STATUS_PROXY_WORKER=1  # success
   else
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${RED}Failed to deploy Proxy Worker${NC}"
     STATUS_PROXY_WORKER=2  # failed
   fi
@@ -416,15 +416,15 @@ fi
 # ============================================
 echo -e "\n${YELLOW}[6/9] Deploying Admin Worker...${NC}"
 
-cd workers/admin || { echo -e "${RED}Failed to enter workers/admin directory${NC}"; STATUS_ADMIN_WORKER=2; cd ../..; }
+cd "$PROJECT_ROOT/workers/admin" || { echo -e "${RED}Failed to enter workers/admin directory${NC}"; STATUS_ADMIN_WORKER=2; }
 
 if [ "$STATUS_ADMIN_WORKER" != "2" ]; then
   if npx wrangler deploy --config wrangler.prod.jsonc 2>&1; then
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${GREEN}Admin Worker deployed${NC}"
     STATUS_ADMIN_WORKER=1  # success
   else
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${RED}Failed to deploy Admin Worker${NC}"
     STATUS_ADMIN_WORKER=2  # failed
   fi
@@ -436,7 +436,7 @@ fi
 echo -e "\n${YELLOW}[7/9] Deploying Health Worker...${NC}"
 
 # Create Health Worker config
-cat > workers/health/wrangler.prod.jsonc <<EOF
+cat > "$PROJECT_ROOT/workers/health/wrangler.prod.jsonc" <<EOF
 {
   "name": "agate-health",
   "compatibility_date": "2024-01-01",
@@ -484,15 +484,15 @@ cat > workers/health/wrangler.prod.jsonc <<EOF
 }
 EOF
 
-cd workers/health || { echo -e "${RED}Failed to enter workers/health directory${NC}"; STATUS_HEALTH_WORKER=2; cd ../..; }
+cd "$PROJECT_ROOT/workers/health" || { echo -e "${RED}Failed to enter workers/health directory${NC}"; STATUS_HEALTH_WORKER=2; }
 
 if [ "$STATUS_HEALTH_WORKER" != "2" ]; then
   if npx wrangler deploy --config wrangler.prod.jsonc 2>&1; then
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${GREEN}Health Worker deployed (cron: */5 * * * *)${NC}"
     STATUS_HEALTH_WORKER=1  # success
   else
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${RED}Failed to deploy Health Worker${NC}"
     STATUS_HEALTH_WORKER=2  # failed
   fi
@@ -511,7 +511,7 @@ else
 fi
 
 # Update .env.production with actual Worker URLs
-cat > pages/.env.production <<EOF
+cat > "$PROJECT_ROOT/pages/.env.production" <<EOF
 # API Base URLs (生产环境)
 # Admin Worker - 管理员 API
 VITE_ADMIN_WORKER_URL=${ADMIN_WORKER_URL}
@@ -530,7 +530,7 @@ echo -e "\n${YELLOW}[8/10] Deploying Admin Frontend (Pages)...${NC}"
 
 # Build the frontend
 echo -e "${BLUE}Building frontend...${NC}"
-cd pages || { echo -e "${RED}Failed to enter pages directory${NC}"; STATUS_PAGES=2; }
+cd "$PROJECT_ROOT/pages" || { echo -e "${RED}Failed to enter pages directory${NC}"; STATUS_PAGES=2; }
 
 if [ "$STATUS_PAGES" != "2" ]; then
   if pnpm build --silent 2>/dev/null; then
@@ -551,7 +551,7 @@ if [ "$STATUS_PAGES" != "2" ]; then
     PAGES_OUTPUT=$(npx wrangler pages deploy dist --project-name=agate-admin --commit-dirty=true 2>&1 || echo "DEPLOY_FAILED")
     PAGES_URL=$(echo "$PAGES_OUTPUT" | grep -oE 'https://[a-z0-9.-]+\.pages\.dev' | head -1 || echo "")
 
-    cd ../..
+    cd "$PROJECT_ROOT"
 
     if echo "$PAGES_OUTPUT" | grep -q "DEPLOY_FAILED"; then
       echo -e "${RED}Failed to deploy to Cloudflare Pages${NC}"
@@ -565,12 +565,10 @@ if [ "$STATUS_PAGES" != "2" ]; then
       STATUS_PAGES=1  # success (deployed but URL parsing failed)
     fi
   else
-    cd ../..
+    cd "$PROJECT_ROOT"
     echo -e "${RED}Failed to build Admin Frontend${NC}"
     STATUS_PAGES=2  # failed
   fi
-else
-  cd ../..
 fi
 
 # ============================================
