@@ -241,7 +241,7 @@ const formData = reactive({
 const rules: FormRules = {
   email: { required: true, message: '请输入邮箱', trigger: 'blur' },
   name: { required: true, message: '请输入姓名', trigger: 'blur' },
-  company_id: { required: true, message: '请选择公司', trigger: 'change', type: 'string' },
+  // PRD V2 第一期：company_id 改为可选，留待第二期使用
   quota_daily: { required: true, message: '请输入每日配额', trigger: 'blur', type: 'number' },
 }
 
@@ -365,7 +365,7 @@ async function handleSubmit() {
       await updateUser(editId.value, {
         name: formData.name,
         role: formData.role,
-        company_id: formData.company_id,
+        company_id: formData.company_id || undefined,
         department_id: formData.department_id || undefined,
         quota_daily: formData.quota_daily,
       })
@@ -375,7 +375,7 @@ async function handleSubmit() {
         email: formData.email,
         name: formData.name,
         role: formData.role,
-        company_id: formData.company_id,
+        company_id: formData.company_id || undefined,
         department_id: formData.department_id || undefined,
         quota_daily: formData.quota_daily,
       })

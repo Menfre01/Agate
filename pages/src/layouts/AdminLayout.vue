@@ -63,11 +63,10 @@ import {
   NIcon,
 } from 'naive-ui'
 import type { MenuOption } from 'naive-ui'
+// PRD V2 第一期：仅导入需要的图标
 import {
   DashboardOutlined,
   UserOutlined,
-  TeamOutlined,
-  ApartmentOutlined,
   KeyOutlined,
   CloudServerOutlined,
   RobotOutlined,
@@ -85,18 +84,17 @@ const collapsed = ref(false)
 // 图标渲染函数
 const renderIcon = (icon: any) => () => h(NIcon, null, { default: () => h(icon) })
 
-// 路由映射
+// PRD V2 第一期：路由映射（仅核心管理功能）
 const routeMap: Record<string, string> = {
   'admin-dashboard': '/admin/dashboard',
   'admin-users': '/admin/users',
-  'admin-companies': '/admin/companies',
-  'admin-departments': '/admin/departments',
   'admin-keys': '/admin/keys',
   'admin-providers': '/admin/providers',
   'admin-models': '/admin/models',
   'admin-logs': '/admin/logs',
 }
 
+// PRD V2 第一期：仅保留核心管理功能，隐藏仪表盘、公司、部门管理
 const menuOptions: MenuOption[] = [
   {
     label: '仪表盘',
@@ -107,16 +105,6 @@ const menuOptions: MenuOption[] = [
     label: '用户管理',
     key: 'admin-users',
     icon: renderIcon(UserOutlined),
-  },
-  {
-    label: '公司管理',
-    key: 'admin-companies',
-    icon: renderIcon(TeamOutlined),
-  },
-  {
-    label: '部门管理',
-    key: 'admin-departments',
-    icon: renderIcon(ApartmentOutlined),
   },
   {
     label: 'API Key 管理',
@@ -148,12 +136,11 @@ const userMenuOptions = [
   },
 ]
 
+// PRD V2 第一期：仅保留核心管理功能
 const activeKey = computed(() => {
   const path = route.path
   if (path.startsWith('/admin/dashboard')) return 'admin-dashboard'
   if (path.startsWith('/admin/users')) return 'admin-users'
-  if (path.startsWith('/admin/companies')) return 'admin-companies'
-  if (path.startsWith('/admin/departments')) return 'admin-departments'
   if (path.startsWith('/admin/keys')) return 'admin-keys'
   if (path.startsWith('/admin/providers')) return 'admin-providers'
   if (path.startsWith('/admin/models')) return 'admin-models'

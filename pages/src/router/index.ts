@@ -133,7 +133,8 @@ router.beforeEach((to, from, next) => {
 
   // 已登录用户访问登录页
   if (to.name === 'Login' && userStore.isLoggedIn) {
-    next(userStore.isAdmin ? { name: 'Dashboard' } : { name: 'UserProfile' })
+    // PRD V2 第一期：管理员跳转到用户管理，普通用户跳转到个人信息
+    next(userStore.isAdmin ? { name: 'Users' } : { name: 'UserProfile' })
     return
   }
 

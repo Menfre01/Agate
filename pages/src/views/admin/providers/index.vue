@@ -62,9 +62,12 @@
             </template>
             <n-space vertical>
               <div><strong>{{ cred.credential_name }}</strong></div>
+              <div v-if="cred.base_url" class="credential-detail">URL: {{ cred.base_url }}</div>
               <div class="credential-detail">
-                优先级: {{ cred.priority }} | 权重: {{ cred.weight }}
-                <span v-if="cred.health_status"> | 状态: {{ cred.health_status }}</span>
+                状态: {{ cred.health_status || '未知' }}
+                <span v-if="cred.last_health_check" class="health-time">
+                  ({{ formatDate(cred.last_health_check) }})
+                </span>
               </div>
             </n-space>
             <template #suffix>
@@ -93,13 +96,7 @@
           <n-input v-model:value="credentialData.api_key" type="password" show-password-on="click" placeholder="sk-..." />
         </n-form-item>
         <n-form-item label="API 地址" path="base_url">
-          <n-input v-model:value="credentialData.base_url" placeholder="留空使用提供商默认地址" />
-        </n-form-item>
-        <n-form-item label="优先级" path="priority">
-          <n-input-number v-model:value="credentialData.priority" :min="0" style="width: 100%;" />
-        </n-form-item>
-        <n-form-item label="权重" path="weight">
-          <n-input-number v-model:value="credentialData.weight" :min="0" style="width: 100%;" />
+          <n-input v-model:value="credentialData.base_url" placeholder="留空使用提供商默认地址（可选）" />
         </n-form-item>
       </n-form>
       <template #action>
@@ -173,12 +170,11 @@ const formData = reactive({
   api_version: '',
 })
 
+// PRD V2 第一期：移除 priority 和 weight，使用一致性哈希
 const credentialData = reactive({
   credential_name: '',
   api_key: '',
   base_url: '',
-  priority: 0,
-  weight: 1,
 })
 
 const rules: FormRules = {
@@ -343,8 +339,6 @@ function openAddCredentialModal() {
   credentialData.credential_name = ''
   credentialData.api_key = ''
   credentialData.base_url = ''
-  credentialData.priority = 0
-  credentialData.weight = 1
   showAddCredentialModal.value = true
 }
 
@@ -353,12 +347,11 @@ async function handleAddCredential() {
     await credentialFormRef.value?.validate()
     credentialSubmitting.value = true
 
+    // PRD V2 第一期：移除 priority 和 weight，使用一致性哈希
     await addCredential(currentProviderId.value, {
       credential_name: credentialData.credential_name,
       api_key: credentialData.api_key,
       base_url: credentialData.base_url || undefined,
-      priority: credentialData.priority,
-      weight: credentialData.weight,
     })
 
     message.success('凭证添加成功')

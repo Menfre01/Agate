@@ -114,6 +114,7 @@ export interface ProviderResponse {
   base_url: string
   api_version: string | null
   is_active: boolean
+  credential_count: number
   created_at: number
   updated_at: number
 }
@@ -121,12 +122,15 @@ export interface ProviderResponse {
 // Provider Credential Response
 export interface ProviderCredentialResponse {
   id: string
-  provider_id: string
-  name: string
-  api_key: string
+  credential_name: string
+  base_url: string | null
   is_active: boolean
+  health_check_model_id: string | null
+  health_status: string
+  last_health_check: number | null
+  last_check_success: number | null
+  consecutive_failures: number
   created_at: number
-  updated_at: number
 }
 
 // Model Response
@@ -344,12 +348,11 @@ export interface UpdateProviderDto {
   is_active?: boolean
 }
 
+// PRD V2 Phase 1: priority and weight removed (using consistent hash instead)
 export interface AddProviderCredentialDto {
   credential_name: string
   api_key: string
   base_url?: string
-  priority?: number
-  weight?: number
 }
 
 export interface CreateModelDto {
