@@ -211,12 +211,14 @@ DELETE /admin/users/:id                  # Delete user
 {
   "email": "user@example.com",
   "name": "John Doe",
-  "company_id": "co_123",
-  "department_id": "dept_456",
+  "company_id": "co_123",      // Optional, reserved for V2 Phase 2
+  "department_id": "dept_456", // Optional, reserved for V2 Phase 2
   "role": "user",
   "quota_daily": 100000
 }
 ```
+
+**Note for V2 Phase 1:** `company_id` and `department_id` are optional. These fields are reserved for future Phase 2 implementation and are not used in business logic during Phase 1.
 
 #### API Keys
 
@@ -277,11 +279,11 @@ POST   /admin/providers/credentials/:id/health-check  # Trigger health check
 {
   "credential_name": "primary",
   "api_key": "sk-ant-...",
-  "base_url": "https://api.anthropic.com",
-  "priority": 0,
-  "weight": 1
+  "base_url": "https://api.anthropic.com"
 }
 ```
+
+**Note:** `priority` and `weight` fields are removed in V2 (consistent hash algorithm is used instead).
 
 #### Models
 
@@ -595,12 +597,14 @@ DELETE /admin/users/:id                  # 删除用户
 {
   "email": "user@example.com",
   "name": "张三",
-  "company_id": "co_123",
-  "department_id": "dept_456",
+  "company_id": "co_123",      // 可选，第二期预留
+  "department_id": "dept_456", // 可选，第二期预留
   "role": "user",
   "quota_daily": 100000
 }
 ```
+
+**V2 第一期说明：** `company_id` 和 `department_id` 为可选字段，留待第二期使用，第一期业务逻辑不依赖这些字段。
 
 #### API Key 管理
 
@@ -661,11 +665,11 @@ POST   /admin/providers/credentials/:id/health-check  # 手动触发健康检查
 {
   "credential_name": "primary",
   "api_key": "sk-ant-...",
-  "base_url": "https://api.anthropic.com",
-  "priority": 0,
-  "weight": 1
+  "base_url": "https://api.anthropic.com"
 }
 ```
+
+**说明：** V2 已移除 `priority` 和 `weight` 字段，改用一致性哈希算法。
 
 #### 模型管理
 

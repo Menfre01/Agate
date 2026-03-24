@@ -157,12 +157,8 @@ export async function listCredentials(
   context: RequestContext,
   id: string
 ): Promise<Response> {
-  const existing = await queries.getProvider(env.DB, id);
-  if (!existing) {
-    throw new NotFoundError("Provider", id);
-  }
-
-  const credentials = await queries.listProviderCredentials(env.DB, id);
+  const providerService = new ProviderService(env);
+  const credentials = await providerService.listCredentials(id);
 
   return withResponseLogging(Response.json({ credentials }), context);
 }
