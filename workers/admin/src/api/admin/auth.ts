@@ -5,6 +5,7 @@
  *
  * Endpoints:
  * - GET /admin/auth - Verify API key and return user info
+ * - GET /user/auth - Verify API key and return user info (alias for frontend compatibility)
  */
 
 import type { RequestContext } from "@agate/shared/types";
@@ -12,7 +13,7 @@ import type { AuthContext } from "@agate/shared/types";
 import { UnauthorizedError } from "@agate/shared/utils/errors/index.js";
 
 /**
- * Handles GET /admin/auth - Verify API key and return auth context
+ * Handles GET /admin/auth and /user/auth - Verify API key and return user info
  *
  * @param request - Incoming request
  * @param context - Request context with auth data
@@ -25,8 +26,11 @@ export async function authRouteHandler(
 ): Promise<Response | null> {
   const url = new URL(request.url);
 
-  // GET /admin/auth - Verify API key and return user info
-  if (url.pathname === "/admin/auth" && request.method === "GET") {
+  // GET /admin/auth or /user/auth - Verify API key and return user info
+  if (
+    (url.pathname === "/admin/auth" || url.pathname === "/user/auth") &&
+    request.method === "GET"
+  ) {
     // Auth context is attached by auth middleware
     const auth = context.metadata.get("auth") as AuthContext | undefined;
 

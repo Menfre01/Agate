@@ -499,9 +499,34 @@ if [ "$STATUS_HEALTH_WORKER" != "2" ]; then
 fi
 
 # ============================================
+# Step 7.5: Update Pages environment variables
+# ============================================
+echo -e "\n${YELLOW}[7.5/9] Updating Pages environment configuration...${NC}"
+
+# Construct the Admin Worker URL
+if [ -n "$ADMIN_DOMAIN" ]; then
+  ADMIN_WORKER_URL="https://${ADMIN_DOMAIN}"
+else
+  ADMIN_WORKER_URL="https://agate-admin.${ACCOUNT_ID}.workers.dev"
+fi
+
+# Update .env.production with actual Worker URLs
+cat > pages/.env.production <<EOF
+# API Base URLs (生产环境)
+# Admin Worker - 管理员 API
+VITE_ADMIN_WORKER_URL=${ADMIN_WORKER_URL}
+
+# User Worker - 用户 API (当前与 Admin Worker 共享)
+VITE_USER_WORKER_URL=${ADMIN_WORKER_URL}
+EOF
+
+echo -e "${GREEN}Environment configuration updated${NC}"
+echo -e "${BLUE}Admin Worker URL: ${ADMIN_WORKER_URL}${NC}"
+
+# ============================================
 # Step 8: Deploy Admin Frontend (Pages)
 # ============================================
-echo -e "\n${YELLOW}[8/9] Deploying Admin Frontend (Pages)...${NC}"
+echo -e "\n${YELLOW}[8/10] Deploying Admin Frontend (Pages)...${NC}"
 
 # Build the frontend
 echo -e "${BLUE}Building frontend...${NC}"
@@ -551,7 +576,7 @@ fi
 # ============================================
 # Step 9: Initialize Super Admin API Key (idempotent)
 # ============================================
-echo -e "\n${YELLOW}[9/9] Initializing Super Admin API Key...${NC}"
+echo -e "\n${YELLOW}[9/10] Initializing Super Admin API Key...${NC}"
 
 # Check if admin key file already exists (from previous deployment)
 if [ -f .admin-api-key ]; then

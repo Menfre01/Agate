@@ -68,9 +68,8 @@ export function createAuthMiddleware(env: Env) {
       return;
     }
 
-    // Skip authentication for public proxy endpoints (handled downstream)
-    // Admin endpoints always require authentication
-    if (url.pathname.startsWith("/admin/")) {
+    // Handle authentication for admin and user endpoints
+    if (url.pathname.startsWith("/admin/") || url.pathname.startsWith("/user/")) {
       const apiKey = extractApiKey(request);
 
       if (!apiKey) {
@@ -80,7 +79,7 @@ export function createAuthMiddleware(env: Env) {
       const authContext = await authService.validateApiKey(apiKey);
 
       // Check if user is admin for admin endpoints
-      if (authContext.userRole !== "admin") {
+      if (url.pathname.startsWith("/admin/") && authContext.userRole !== "admin") {
         throw new UnauthorizedError("Admin access required");
       }
 
