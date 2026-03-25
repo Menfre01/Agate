@@ -7,6 +7,7 @@
  */
 
 import type {
+  AuthContext,
   Env,
   RequestContext,
   UsageLogsQuery,
@@ -51,15 +52,21 @@ export async function getUsageStats(
 }
 
 /**
- * Handles GET /admin/stats/tokens - Token usage summary.
+ * Handles GET /admin/stats/tokens and /user/stats/tokens - Token usage summary.
+ *
+ * For /user/stats/tokens, automatically filters to the authenticated user's data.
  */
 export async function getTokenUsage(
-  _request: Request,
+  request: Request,
   env: Env,
   context: RequestContext
 ): Promise<Response> {
-  const url = new URL(_request.url);
+  const url = new URL(request.url);
   const usageService = new UsageService(env);
+
+  // Check if this is a user endpoint (auto-filter to current user)
+  const isUserEndpoint = url.pathname === "/user/stats/tokens";
+  const auth = context.metadata.get("auth") as AuthContext | undefined;
 
   // Calculate time range based on period
   const period = url.searchParams.get("period") ?? "day";
@@ -86,15 +93,29 @@ export async function getTokenUsage(
     end_at: now,
     company_id: url.searchParams.get("company_id") ?? undefined,
     department_id: url.searchParams.get("department_id") ?? undefined,
-    user_id: url.searchParams.get("user_id") ?? undefined,
+    user_id: isUserEndpoint ? auth?.userId : (url.searchParams.get("user_id") ?? undefined),
   });
+
+  // Transform by_model to by_entity for frontend compatibility
+  const byEntity = summary.by_model.map((m) => ({
+    entity_type: "model" as const,
+    entity_id: m.model_id,
+    entity_name: m.model_name,
+    total_tokens: m.total_tokens,
+    input_tokens: m.input_tokens,
+    output_tokens: m.output_tokens,
+    request_count: m.requests,
+  }));
 
   return withResponseLogging(
     Response.json({
       period,
       start_at: startAt,
       end_at: now,
-      ...summary,
+      total_tokens: summary.total_tokens,
+      input_tokens: summary.input_tokens,
+      output_tokens: summary.output_tokens,
+      by_entity: byEntity,
     }),
     context
   );
@@ -245,7 +266,7 @@ export async function getLogs(
 }
 
 /**
- * Routes admin stats requests.
+ * Routes stats requests for both admin and user endpoints.
  */
 export function statsRouteHandler(
   request: Request,
@@ -255,17 +276,26 @@ export function statsRouteHandler(
   const url = new URL(request.url);
   const pathname = url.pathname;
 
-  if (!pathname.startsWith("/admin/stats")) {
+  // Handle both /admin/stats/* and /user/stats/* paths
+  const isAdminPath = pathname.startsWith("/admin/stats");
+  const isUserPath = pathname.startsWith("/user/stats");
+
+  if (!isAdminPath && !isUserPath) {
     return null;
   }
 
   try {
-    if (pathname === "/admin/stats/usage" && request.method === "GET") {
-      return getUsageStats(request, env, context);
+    if ((pathname === "/admin/stats/tokens" || pathname === "/user/stats/tokens") && request.method === "GET") {
+      return getTokenUsage(request, env, context);
     }
 
-    if (pathname === "/admin/stats/tokens" && request.method === "GET") {
-      return getTokenUsage(request, env, context);
+    // Admin-only endpoints below
+    if (!isAdminPath) {
+      return null;
+    }
+
+    if (pathname === "/admin/stats/usage" && request.method === "GET") {
+      return getUsageStats(request, env, context);
     }
 
     if (pathname === "/admin/stats/costs" && request.method === "GET") {
