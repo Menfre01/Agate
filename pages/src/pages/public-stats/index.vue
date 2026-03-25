@@ -94,6 +94,16 @@
             <n-radio-button value="week">近 7 天</n-radio-button>
             <n-radio-button value="month">近 30 天</n-radio-button>
           </n-radio-group>
+          <n-divider vertical />
+          <n-space align="center">
+            <n-text depth="3">自动刷新:</n-text>
+            <n-select
+              v-model:value="autoRefreshInterval"
+              :options="refreshOptions"
+              style="width: 120px"
+              @update:value="onRefreshIntervalChange"
+            />
+          </n-space>
         </n-space>
       </n-card>
 
@@ -136,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NCard,
@@ -152,6 +162,8 @@ import {
   NTag,
   NText,
   NAlert,
+  NSelect,
+  NDivider,
   type FormInst,
 } from 'naive-ui'
 import * as echarts from 'echarts'
@@ -178,6 +190,18 @@ const tokenUsage = ref<TokenUsageResponse>({
 const loading = ref(false)
 const error = ref('')
 const period = ref<'day' | 'week' | 'month'>('week')
+
+// 自动刷新
+type RefreshInterval = 'off' | '30s' | '1m' | '5m'
+const autoRefreshInterval = ref<RefreshInterval>('off')
+const timerRef = ref<number | null>(null)
+
+const refreshOptions = [
+  { label: '关闭', value: 'off' },
+  { label: '30 秒', value: '30s' },
+  { label: '1 分钟', value: '1m' },
+  { label: '5 分钟', value: '5m' },
+]
 
 // 图表引用
 const trendChartRef = ref<HTMLElement>()
@@ -370,6 +394,46 @@ function clearApiKey() {
   }
   sessionStorage.removeItem('public_api_key')
   inputApiKey.value = ''
+  stopAutoRefresh()
+}
+
+// 获取刷新间隔毫秒数
+function getIntervalMs(interval: RefreshInterval): number {
+  switch (interval) {
+    case '30s': return 30000
+    case '1m': return 60000
+    case '5m': return 300000
+    default: return 0
+  }
+}
+
+// 开始自动刷新
+function startAutoRefresh() {
+  stopAutoRefresh()
+  const intervalMs = getIntervalMs(autoRefreshInterval.value)
+  if (intervalMs > 0) {
+    timerRef.value = window.setInterval(() => {
+      loadTokenUsage()
+    }, intervalMs)
+  }
+}
+
+// 停止自动刷新
+function stopAutoRefresh() {
+  if (timerRef.value !== null) {
+    clearInterval(timerRef.value)
+    timerRef.value = null
+  }
+}
+
+// 刷新间隔变化
+function onRefreshIntervalChange(value: RefreshInterval) {
+  localStorage.setItem('stats_refresh_interval', value)
+  if (value === 'off') {
+    stopAutoRefresh()
+  } else {
+    startAutoRefresh()
+  }
 }
 
 // 初始化
@@ -386,11 +450,25 @@ onMounted(() => {
     loadUserData()
   }
 
+  // 恢复刷新间隔设置
+  const savedInterval = localStorage.getItem('stats_refresh_interval') as RefreshInterval
+  if (savedInterval && refreshOptions.some(o => o.value === savedInterval)) {
+    autoRefreshInterval.value = savedInterval
+    if (savedInterval !== 'off') {
+      startAutoRefresh()
+    }
+  }
+
   // 监听窗口大小变化
   window.addEventListener('resize', () => {
     trendChart?.resize()
     modelChart?.resize()
   })
+})
+
+// 清理
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 
