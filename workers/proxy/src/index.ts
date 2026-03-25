@@ -52,16 +52,32 @@ function handleCorsPreflight(request: Request): Response | null {
 
 /**
  * Adds CORS headers to response.
- * Skips if CORS headers are already present (e.g., from streaming handlers).
+ *
+ * For streaming responses, this checks the X-CORS-Handled marker to avoid
+ * accessing the stream body, which would cause "disturbed stream" errors.
  */
 function withCorsHeaders(response: Response): Response {
+  // Check if CORS handling is already done by the handler
+  // (indicated by X-CORS-Handled header)
+  if (response.headers.has("X-CORS-Handled")) {
+    return response;
+  }
+
   // Check if CORS headers are already present
   if (response.headers.has("Access-Control-Allow-Origin")) {
     return response;
   }
-  const newResponse = new Response(response.body, response);
-  newResponse.headers.set("Access-Control-Allow-Origin", "*");
-  return newResponse;
+
+  // For non-streaming responses, create a new Response with CORS headers
+  try {
+    const newResponse = new Response(response.body, response);
+    newResponse.headers.set("Access-Control-Allow-Origin", "*");
+    return newResponse;
+  } catch {
+    // Body is disturbed or otherwise unusable, fallback to direct header modification
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    return response;
+  }
 }
 
 /**

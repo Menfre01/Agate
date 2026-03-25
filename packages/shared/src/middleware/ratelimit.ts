@@ -210,19 +210,28 @@ export function withRateLimitHeaders(response: Response, context: RequestContext
     // Check if the response body is a locked/disturbed stream
     // If so, just add headers to the existing response without creating a new one
     const body = response.body;
-    if (body && body.locked) {
-      // Stream is locked, can't create new Response - just add headers
+    if (body && (body.locked || !body.tee)) {
+      // Stream is locked or disturbed (no tee method means it's been used),
+      // can't create new Response - just add headers directly
       Object.entries(headers).forEach(([key, value]) => {
         response.headers.set(key, value);
       });
       return response;
     }
 
-    const newResponse = new Response(response.body, response);
-    Object.entries(headers).forEach(([key, value]) => {
-      newResponse.headers.set(key, value);
-    });
-    return newResponse;
+    try {
+      const newResponse = new Response(response.body, response);
+      Object.entries(headers).forEach(([key, value]) => {
+        newResponse.headers.set(key, value);
+      });
+      return newResponse;
+    } catch {
+      // Body is disturbed or otherwise unusable, fallback to direct header modification
+      Object.entries(headers).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+      return response;
+    }
   }
   return response;
 }

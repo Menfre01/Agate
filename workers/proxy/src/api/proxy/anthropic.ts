@@ -63,8 +63,30 @@ export async function handleMessages(
       return handleStreamingResponse(result, context, env);
     }
 
-    // For non-streaming, return the response directly
-    return withResponseLogging(result.response, context);
+    // For non-streaming: The response has been recreated in ProxyService with a fresh body
+    // We need to add CORS and rate limit headers
+    const response = result.response;
+
+    // Create new response with CORS headers
+    const headers = new Headers(response.headers);
+    headers.set("Access-Control-Allow-Origin", "*");
+    // Add marker to indicate CORS is already handled
+    headers.set("X-CORS-Handled", "1");
+
+    // Add rate limit headers
+    const rateLimit = getRateLimitHeaders(context);
+    if (rateLimit) {
+      headers.set("RateLimit-Limit", rateLimit["RateLimit-Limit"]);
+      headers.set("RateLimit-Remaining", rateLimit["RateLimit-Remaining"]);
+      headers.set("RateLimit-Reset", rateLimit["RateLimit-Reset"]);
+    }
+
+    const newResponse = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
+    return withResponseLogging(newResponse, context);
   } catch (error) {
     return handleMessagesError(error, context, env);
   }
@@ -73,11 +95,12 @@ export async function handleMessages(
 /**
  * Handles streaming response from upstream.
  *
- * Intercepts SSE events to extract usage information and records it
- * asynchronously after the stream completes. Handles all termination cases:
- * - Normal completion (message_stop event)
- * - Client disconnect
- * - Upstream error
+ * Uses tee() to split the stream into two independent branches:
+ * 1. One branch for parsing token information and recording usage
+ * 2. Another branch for returning to the client
+ *
+ * This prevents "ReadableStream is disturbed" errors by ensuring each
+ * branch has its own independent stream that can be read separately.
  *
  * Token collection strategy:
  * - input_tokens: from message_start event (always available early in stream)
@@ -114,29 +137,87 @@ function handleStreamingResponse(
   logResponse(context, 200);
 
   // If no usage context, return response without usage tracking
+  // Mark that CORS headers are already added to prevent withCorsHeaders from modifying the stream
   if (!usageContext) {
     const headers = new Headers(response.headers);
     headers.set("Access-Control-Allow-Origin", "*");
+    // Add a marker to indicate CORS headers are already handled
+    headers.set("X-CORS-Handled", "1");
     return new Response(response.body, {
       headers,
       status: response.status,
     });
   }
 
+  // Use tee() to split the stream into two independent branches
+  // Branch 1: For parsing and recording usage (consumed fully, doesn't affect client)
+  // Branch 2: For returning to the client (passed through)
+  const [parseBranch, clientBranch] = result.stream.tee();
+
+  // Start parsing asynchronously (don't block the response)
+  parseStreamForUsage(parseBranch, requestId, usageContext, env).catch((err) => {
+    console.error(`[${requestId}] Failed to parse stream for usage: ${err}`);
+  });
+
+  // Build response headers with CORS and rate limit
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  // Add a marker to indicate CORS headers are already handled
+  headers.set("X-CORS-Handled", "1");
+
+  // Add rate limit headers
+  const rateLimit = getRateLimitHeaders(context);
+  if (rateLimit) {
+    headers.set("RateLimit-Limit", rateLimit["RateLimit-Limit"]);
+    headers.set("RateLimit-Remaining", rateLimit["RateLimit-Remaining"]);
+    headers.set("RateLimit-Reset", rateLimit["RateLimit-Reset"]);
+  }
+
+  // Return the client branch - this stream is independent and can be read by the client
+  // without affecting the parsing branch
+  return new Response(clientBranch, {
+    headers,
+    status: response.status,
+  });
+}
+
+/**
+ * Parses the stream to extract token usage information and record it.
+ *
+ * This function consumes the parseBranch completely and is non-blocking
+ * (runs asynchronously while the client receives the response).
+ *
+ * @param stream - The parse branch of the teed stream
+ * @param requestId - Request ID for logging
+ * @param usageContext - Usage recording context
+ * @param env - Cloudflare Workers environment
+ */
+async function parseStreamForUsage(
+  stream: ReadableStream,
+  requestId: string,
+  usageContext: {
+    authContext: import("@agate/shared/types").AuthContext;
+    apiKeyId: string;
+    userId: string;
+    departmentId: string | null;
+    providerId: string;
+    modelId: string;
+    modelName: string;
+    startTime: number;
+  },
+  env: Env
+): Promise<void> {
   // Token tracking state
   let inputTokens = 0;
   let outputTokens = 0;
   let accumulatedOutputTokens = 0; // Fallback from content_block_delta
   let buffer = "";
-  let streamEnded = false;
 
   const textDecoder = new TextDecoder();
+  const reader = stream.getReader();
 
   // Helper to record usage - called on any stream termination
   const recordUsage = (status: "success" | "error", errorCode?: string | null) => {
-    if (streamEnded) return;
-    streamEnded = true;
-
     // Use accumulated output tokens if message_delta never arrived
     const finalOutputTokens = outputTokens > 0 ? outputTokens : accumulatedOutputTokens;
 
@@ -257,74 +338,33 @@ function handleStreamingResponse(
     }
   };
 
-  // Create a wrapped ReadableStream to handle all termination scenarios
-  const reader = result.stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
 
-  // Set up error/completion handlers
-  reader.closed.catch((err: Error | undefined) => {
-    // Stream error (client disconnect or upstream error)
-    if (!streamEnded) {
-      const errorCode = err?.name === "AbortError" ? "CLIENT_DISCONNECT" : "STREAM_ERROR";
-      recordUsage("error", errorCode);
-    }
-  });
-
-  const wrappedStream = new ReadableStream({
-    async pull(controller) {
-      try {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          // Stream ended normally - flush remaining buffer and record
-          if (buffer.trim()) {
-            const lines = buffer.split('\n');
-            for (const line of lines) {
-              if (line.startsWith('data:')) {
-                parseSSEData(line);
-              }
+      if (done) {
+        // Stream ended normally - flush remaining buffer and record
+        if (buffer.trim()) {
+          const lines = buffer.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              parseSSEData(line);
             }
           }
-          recordUsage("success");
-          controller.close();
-          return;
         }
-
-        // Process the chunk
-        buffer += textDecoder.decode(value, { stream: true });
-        processBuffer();
-        controller.enqueue(value);
-      } catch (err: unknown) {
-        // Read error
-        const errorCode = (err as Error)?.name === "AbortError" ? "CLIENT_DISCONNECT" : "STREAM_ERROR";
-        recordUsage("error", errorCode);
-        controller.error(err);
+        recordUsage("success");
+        break;
       }
-    },
 
-    cancel(reason: unknown) {
-      // Client cancelled the stream
-      if (!streamEnded) {
-        recordUsage("error", "CLIENT_CANCEL");
-      }
+      // Process the chunk
+      buffer += textDecoder.decode(value, { stream: true });
+      processBuffer();
     }
-  });
-
-  const headers = new Headers(response.headers);
-  headers.set("Access-Control-Allow-Origin", "*");
-
-  // Add rate limit headers directly to avoid withRateLimitHeaders creating a new Response
-  // which would fail due to the stream being locked
-  const rateLimit = getRateLimitHeaders(context);
-  if (rateLimit) {
-    headers.set("RateLimit-Limit", rateLimit["RateLimit-Limit"]);
-    headers.set("RateLimit-Remaining", rateLimit["RateLimit-Remaining"]);
-    headers.set("RateLimit-Reset", rateLimit["RateLimit-Reset"]);
+  } catch (err: unknown) {
+    // Read error
+    const errorCode = (err as Error)?.name === "AbortError" ? "CLIENT_DISCONNECT" : "STREAM_ERROR";
+    recordUsage("error", errorCode);
   }
-
-  return new Response(wrappedStream, {
-    headers,
-    status: response.status,
-  });
 }
 
 /**

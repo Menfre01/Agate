@@ -149,3 +149,20 @@ pnpm dev:logs     # 查看日志
 3. 运行 `npm test` 确保通过
 4. 运行 `npm run typecheck` 确保类型正确
 5. 使用 `/commit` 提交代码
+
+### 外部 API 文档查询规范
+
+#### Anthropic API 文档
+
+查询 Anthropic API 文档时，**必须**确保文档版本为 **2026 年或更新**。
+
+**原因**：Anthropic API 快速迭代，旧版本文档可能包含过时的字段格式、事件类型或参数定义，导致代码实现错误。
+
+**正确方式**：
+- 优先使用 WebSearch 工具搜索 "Anthropic API Messages 2026" 或 "Anthropic streaming SSE 2026"
+- 验证文档 URL 包含最新日期或版本号
+- 交叉验证多个来源以确保格式正确
+
+**禁止操作**：
+- ❌ 使用 2025 年或更早的文档作为实现依据
+- ❌ 假设 SSE 事件格式与旧版本相同

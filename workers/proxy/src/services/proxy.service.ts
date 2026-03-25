@@ -284,10 +284,27 @@ export class ProxyService {
     }
 
     // For non-streaming, extract usage from response
-    const usage = await this.extractUsage(response);
+    // We need to read the JSON to get usage, but also recreate the response
+    // so the body is available for the client
+    const { usage, data } = await this.extractUsageWithBody(response);
+
+    // Recreate response with the original JSON body
+    // Use JSON.stringify instead of Response.json to have better control over the body
+    const bodyText = JSON.stringify(data);
+    const headers = new Headers(response.headers);
+    // Ensure content-type is set correctly
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const newResponse = new Response(bodyText, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
 
     return {
-      response,
+      response: newResponse,
       usage,
       requestId,
       responseTimeMs,
@@ -373,6 +390,46 @@ export class ProxyService {
       headers,
       body: JSON.stringify(body),
     };
+  }
+
+  /**
+   * Extracts usage information and body data from response.
+   *
+   * @param response - Response from upstream
+   * @returns Usage information and original response body data
+   */
+  private async extractUsageWithBody(response: Response): Promise<{
+    usage: AnthropicUsage;
+    data: unknown;
+  }> {
+    if (!response.body) {
+      return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
+    }
+
+    try {
+      const data = await response.json() as { usage?: AnthropicUsage };
+      const rawUsage = data.usage ?? { input_tokens: 0, output_tokens: 0 };
+
+      // Validate and clamp token counts to non-negative values
+      const inputTokens = Math.max(0, rawUsage.input_tokens);
+      const outputTokens = Math.max(0, rawUsage.output_tokens);
+
+      // Log warning if upstream returned negative tokens
+      if (rawUsage.input_tokens < 0 || rawUsage.output_tokens < 0) {
+        console.warn(
+          `Upstream API returned negative token counts: ` +
+          `input_tokens=${rawUsage.input_tokens}, output_tokens=${rawUsage.output_tokens}. Clamped to 0.`
+        );
+      }
+
+      return {
+        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+        data
+      };
+    } catch {
+      // Failed to parse - assume zero usage and null data
+      return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
+    }
   }
 
   /**
