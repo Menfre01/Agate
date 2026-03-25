@@ -49,11 +49,14 @@ The easiest way to deploy is using the quick deploy script:
 # Deploy with default workers.dev domains
 ./scripts/quick-deploy.sh
 
-# Deploy with custom domains (proxy and admin)
-./scripts/quick-deploy.sh api.yourdomain.com admin.yourdomain.com
+# Deploy with custom domains
+./scripts/quick-deploy.sh --proxy-domain=api.example.com --admin-domain=admin.example.com
 
-# Deploy with specific account_id
-./scripts/quick-deploy.sh "" "" your-account-id
+# Deploy with specific account ID
+./scripts/quick-deploy.sh --account-id=your-account-id
+
+# Deploy with custom domains and account ID
+./scripts/quick-deploy.sh --proxy-domain=api.example.com --admin-domain=admin.example.com --account-id=your-account-id
 ```
 
 The script will automatically:
@@ -185,6 +188,7 @@ This command:
 - `0003_update_users_for_system.sql` - System user support
 - `0004_create_system_user.sql` - System user for health checks
 - `0005_seed_prod_data.sql` - Production seed data (providers, models, demo company)
+- `0006_add_actual_model_id.sql` - Add actual_model_id to model_providers for heterogeneous provider mapping
 
 #### Step 6: Deploy Workers
 
@@ -338,10 +342,13 @@ wrangler login
 ./scripts/quick-deploy.sh
 
 # 使用自定义域名部署
-./scripts/quick-deploy.sh api.yourdomain.com admin.yourdomain.com
+./scripts/quick-deploy.sh --proxy-domain=api.example.com --admin-domain=admin.example.com
 
-# 指定 account_id 部署
-./scripts/quick-deploy.sh "" "" your-account-id
+# 指定 account ID 部署
+./scripts/quick-deploy.sh --account-id=your-account-id
+
+# 使用自定义域名和 account ID 部署
+./scripts/quick-deploy.sh --proxy-domain=api.example.com --admin-domain=admin.example.com --account-id=your-account-id
 ```
 
 脚本将自动：
@@ -508,6 +515,7 @@ wrangler d1 migrations apply agate-db --remote --config workers/proxy/wrangler.p
 - `0003_update_users_for_system.sql` - 系统用户支持
 - `0004_create_system_user.sql` - 健康检查系统用户
 - `0005_seed_prod_data.sql` - 生产种子数据（供应商、模型、演示公司）
+- `0006_add_actual_model_id.sql` - 添加 actual_model_id 字段用于异构供应商模型映射
 
 #### 步骤 6：部署 Worker
 
