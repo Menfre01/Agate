@@ -307,6 +307,13 @@ async function parseStreamForUsage(
 
     const responseTimeMs = Date.now() - usageContext.startTime;
 
+    // Log final token counts for debugging
+    console.log(
+      `[${requestId}] Recording usage - status: ${status}, ` +
+      `input_tokens: ${inputTokens}, output_tokens: ${finalOutputTokens}, ` +
+      `events_received: ${eventCount}`
+    );
+
     // Log warning if tokens appear incomplete
     if (status === "success" && inputTokens === 0 && finalOutputTokens === 0) {
       console.warn(`[${requestId}] Stream completed but no tokens were captured`);
@@ -353,11 +360,21 @@ async function parseStreamForUsage(
     });
   };
 
+  // Event counter for debugging (log first few events)
+  let eventCount = 0;
+  const MAX_EVENT_LOGS = 3;
+
   // Parse SSE data line and extract token information
   const parseSSEData = (dataLine: string) => {
     // Remove "data:" prefix and trim
     const jsonStr = dataLine.slice(5).trim();
     if (!jsonStr || jsonStr === "[DONE]") return;
+
+    // Log first few events for debugging
+    if (eventCount < MAX_EVENT_LOGS) {
+      console.log(`[${requestId}] SSE event #${eventCount + 1}: ${jsonStr.substring(0, 500)}`);
+      eventCount++;
+    }
 
     try {
       const data = JSON.parse(jsonStr);

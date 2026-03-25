@@ -333,9 +333,20 @@ export class ProxyService {
     // so the body is available for the client
     const { usage, data } = await this.extractUsageWithBody(response);
 
-    // Recreate response with the original JSON body
-    // Use JSON.stringify instead of Response.json to have better control over the body
-    const bodyText = JSON.stringify(data);
+    // Recreate response with the original body
+    // Handle different data types from extractUsageWithBody
+    let bodyText: string;
+    if (data === null) {
+      // Parsing failed and body was consumed, return empty response
+      bodyText = "";
+    } else if (typeof data === "string") {
+      // Error text or non-JSON response
+      bodyText = data;
+    } else {
+      // JSON object
+      bodyText = JSON.stringify(data);
+    }
+
     const headers = new Headers(response.headers);
     // Ensure content-type is set correctly
     if (!headers.has("Content-Type")) {
@@ -471,7 +482,8 @@ export class ProxyService {
       // For error responses, return the response text as data for error handling
       const errorText = await response.text();
       console.error(`[extractUsageWithBody] Error response body: ${errorText.substring(0, 200)}`);
-      return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
+      // Return error text so it can be forwarded to the client
+      return { usage: { input_tokens: 0, output_tokens: 0 }, data: errorText };
     }
 
     // Check content type before parsing JSON
@@ -480,7 +492,8 @@ export class ProxyService {
       console.warn(`[extractUsageWithBody] Unexpected content-type: ${contentType}`);
       const text = await response.text();
       console.warn(`[extractUsageWithBody] Response body (first 200 chars): ${text.substring(0, 200)}`);
-      return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
+      // Return text so it can be forwarded to the client
+      return { usage: { input_tokens: 0, output_tokens: 0 }, data: text };
     }
 
     try {
