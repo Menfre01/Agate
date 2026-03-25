@@ -107,6 +107,7 @@ export async function validateRequestAuth(
   const apiKey = extractApiKey(request);
 
   if (!apiKey) {
+    console.warn("[Auth] Missing API key in request headers");
     throw new UnauthorizedError("Missing API key");
   }
 

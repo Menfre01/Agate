@@ -134,6 +134,7 @@ export class ProxyService {
     // Validate model access
     const model = await this.modelService.getByModelId(request.model);
     if (!model || !model.is_active) {
+      console.warn(`[Proxy] Model validation failed: ${request.model} - model not found or inactive`);
       throw new ValidationError("Invalid or inactive model", {
         model: request.model,
       });
@@ -145,6 +146,7 @@ export class ProxyService {
       model.id
     );
     if (!allowed) {
+      console.warn(`[Proxy] Model access denied: department=${authContext.departmentId}, model=${request.model}`);
       throw new ValidationError("Model not allowed for your department", {
         model: request.model,
       });
@@ -157,6 +159,7 @@ export class ProxyService {
     ]);
 
     if (!apiKey || !user) {
+      console.error(`[Proxy] Failed to fetch entities: apiKey=${!!apiKey}, user=${!!user}, userId=${authContext.userId}`);
       throw new Error("Failed to fetch entities for request processing");
     }
 
@@ -408,6 +411,7 @@ export class ProxyService {
       "host",
       "content-length",
       "content-type",  // We set our own
+      "accept-encoding",  // Let Cloudflare handle gzip decompression
     ]);
 
     // Forward all client headers except blocked ones

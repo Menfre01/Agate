@@ -130,6 +130,7 @@ export class ProviderService {
     try {
       new URL(dto.base_url);
     } catch {
+      console.warn(`[Provider] Invalid base_url format: ${dto.base_url}`);
       throw new ValidationError("Invalid base URL format", {
         base_url: dto.base_url,
       });
@@ -148,6 +149,7 @@ export class ProviderService {
     };
 
     await queries.createProvider(this.db, provider);
+    console.info(`[Provider] Created provider: ${provider.id} (${dto.name})`);
 
     return this.toResponse(provider, 0);
   }
@@ -202,12 +204,16 @@ export class ProviderService {
   async deleteProvider(id: string): Promise<void> {
     const existing = await queries.getProvider(this.db, id);
     if (!existing) {
+      console.warn(`[Provider] Provider not found for delete: ${id}`);
       throw new NotFoundError("Provider", id);
     }
 
     // Check if provider has active credentials
     const credentials = await queries.listProviderCredentials(this.db, id);
     if (credentials.length > 0) {
+      console.warn(
+        `[Provider] Cannot delete provider with ${credentials.length} active credentials: ${id}`
+      );
       throw new ValidationError(
         "Cannot delete provider with active credentials",
         { credential_count: String(credentials.length) }
@@ -215,6 +221,7 @@ export class ProviderService {
     }
 
     await queries.deleteProvider(this.db, id);
+    console.info(`[Provider] Deleted provider: ${id}`);
   }
 
   /**
@@ -260,6 +267,7 @@ export class ProviderService {
   ): Promise<ProviderCredentialResponse> {
     const provider = await queries.getProvider(this.db, providerId);
     if (!provider) {
+      console.warn(`[Provider] Provider not found for adding credential: ${providerId}`);
       throw new NotFoundError("Provider", providerId);
     }
 
@@ -268,6 +276,7 @@ export class ProviderService {
       try {
         new URL(dto.base_url);
       } catch {
+        console.warn(`[Provider] Invalid base_url format for credential: ${dto.base_url}`);
         throw new ValidationError("Invalid base URL format", {
           base_url: dto.base_url,
         });
@@ -280,6 +289,7 @@ export class ProviderService {
       encryptedKey = await this.encryptApiKey(dto.api_key);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[Provider] Failed to encrypt API key: ${errorMessage}`);
       throw new ValidationError(`Failed to encrypt API key: ${errorMessage}`, {
         original_error: errorMessage,
       });
@@ -306,6 +316,7 @@ export class ProviderService {
     };
 
     await queries.createProviderCredential(this.db, credential);
+    console.info(`[Provider] Added credential: ${credential.id} to provider ${providerId}`);
 
     return {
       id: credential.id,
@@ -330,10 +341,12 @@ export class ProviderService {
   async deleteCredential(credentialId: string): Promise<void> {
     const existing = await queries.getProviderCredential(this.db, credentialId);
     if (!existing) {
+      console.warn(`[Provider] Credential not found for delete: ${credentialId}`);
       throw new NotFoundError("Credential", credentialId);
     }
 
     await queries.deleteProviderCredential(this.db, credentialId);
+    console.info(`[Provider] Deleted credential: ${credentialId}`);
   }
 
   /**
@@ -347,6 +360,7 @@ export class ProviderService {
     status: "healthy" | "unhealthy" | "unknown"
   ): Promise<void> {
     await queries.updateCredentialHealth(this.db, credentialId, status);
+    console.info(`[Provider] Updated health status: ${credentialId} -> ${status}`);
   }
 
   /**
@@ -373,6 +387,7 @@ export class ProviderService {
     const modelProviders = await queries.getActiveProvidersForModel(this.db, modelId);
 
     if (modelProviders.length === 0) {
+      console.error(`[Provider] No active providers found for model: ${modelId}`);
       throw new Error("No active providers found for model");
     }
 
@@ -387,6 +402,7 @@ export class ProviderService {
     // 3. Get provider details
     const provider = await queries.getProvider(this.db, selectedProvider.provider_id);
     if (!provider || !provider.is_active) {
+      console.error(`[Provider] Provider not found or inactive: ${selectedProvider.provider_id}`);
       throw new Error("Provider not found or inactive");
     }
 
@@ -396,6 +412,14 @@ export class ProviderService {
     // 5. Select credential using consistent hash(api_key_id)
     // consistentHashSelect automatically filters out unhealthy credentials
     const credential = consistentHashSelect(credentials, apiKeyId);
+
+    if (!credential) {
+      console.error(
+        `[Provider] No healthy credential available for provider=${provider.id}, ` +
+        `apiKeyId=${apiKeyId}, activeCredentials=${credentials.length}`
+      );
+      throw new Error("No healthy credential available for selected provider");
+    }
 
     // 6. Decrypt API key
     const apiKey = await this.decryptApiKey(credential.api_key_encrypted);

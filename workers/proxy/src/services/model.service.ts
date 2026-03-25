@@ -102,6 +102,7 @@ export class ModelService {
     // Check if model_id already exists
     const existing = await queries.getModelByModelId(this.db, dto.model_id);
     if (existing) {
+      console.warn(`[Model] Model already exists: ${dto.model_id}`);
       throw new ConflictError("Model", "model_id", dto.model_id);
     }
 
@@ -119,6 +120,7 @@ export class ModelService {
     };
 
     await queries.createModel(this.db, model);
+    console.info(`[Model] Created model: ${model.id} (${dto.model_id})`);
 
     return this.buildResponse(model);
   }
@@ -134,6 +136,7 @@ export class ModelService {
   async updateModel(id: string, dto: UpdateModelDto): Promise<ModelResponse> {
     const existing = await queries.getModel(this.db, id);
     if (!existing) {
+      console.warn(`[Model] Model not found for update: ${id}`);
       throw new NotFoundError("Model", id);
     }
 
@@ -145,6 +148,7 @@ export class ModelService {
       is_active: dto.is_active,
     });
 
+    console.info(`[Model] Updated model: ${id}`);
     return this.buildResponse(updated);
   }
 
@@ -157,10 +161,12 @@ export class ModelService {
   async deleteModel(id: string): Promise<void> {
     const existing = await queries.getModel(this.db, id);
     if (!existing) {
+      console.warn(`[Model] Model not found for delete: ${id}`);
       throw new NotFoundError("Model", id);
     }
 
     await queries.deleteModel(this.db, id);
+    console.info(`[Model] Deleted model: ${id}`);
   }
 
   /**

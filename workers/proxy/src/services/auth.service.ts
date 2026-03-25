@@ -62,6 +62,8 @@ export class AuthService {
   async validateApiKey(apiKey: string): Promise<AuthContext> {
     // Validate key format
     if (!this.isValidApiKeyFormat(apiKey)) {
+      const keyPrefix = apiKey.slice(0, 10);
+      console.warn(`[Auth] Invalid API key format: ${keyPrefix}... (length: ${apiKey.length})`);
       throw new UnauthorizedError("Invalid API key format");
     }
 
@@ -77,16 +79,20 @@ export class AuthService {
     // Cache miss - query database
     const keyData = await queries.getApiKeyByKeyHash(this.db, keyHash);
     if (!keyData) {
+      const keyPrefix = apiKey.slice(0, 10);
+      console.warn(`[Auth] API key not found in database: ${keyPrefix}...`);
       throw new UnauthorizedError("Invalid API key");
     }
 
     // Check if key is active
     if (!keyData.is_active) {
+      console.warn(`[Auth] API key is disabled: ${keyData.id}`);
       throw new UnauthorizedError("API key is disabled");
     }
 
     // Check if key is expired
     if (keyData.expires_at && keyData.expires_at < Date.now()) {
+      console.warn(`[Auth] API key has expired: ${keyData.id}, expired_at=${new Date(keyData.expires_at).toISOString()}`);
       throw new UnauthorizedError("API key has expired");
     }
 

@@ -118,7 +118,15 @@ export class UsageService {
       created_at: Date.now(),
     };
 
-    await queries.createUsageLog(this.db, log);
+    try {
+      await queries.createUsageLog(this.db, log);
+    } catch (err) {
+      console.error(
+        `[Usage] Failed to record usage log: ${err}, ` +
+        `userId=${params.userId}, model=${params.modelName}, status=${params.status}`
+      );
+      throw err;
+    }
 
     return log.id;
   }
