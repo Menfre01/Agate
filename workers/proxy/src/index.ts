@@ -88,28 +88,34 @@ export default {
     // Create request context
     const context = createRequestContext(request);
 
+    // Create logger middleware
+    const loggerMiddleware = createLoggerMiddleware(env);
+
     // Handle CORS preflight
     const corsResponse = handleCorsPreflight(request);
     if (corsResponse) {
+      await loggerMiddleware(context);
+      logResponse(context, 204);
       return corsResponse;
     }
 
-    // Create middleware
-    const loggerMiddleware = createLoggerMiddleware(env);
     const url = new URL(request.url);
     const isDev = env.ENVIRONMENT === "development" || url.hostname === "localhost" || url.hostname === "127.0.0.1";
     const rateLimit = isDev ? { limit: 10000, window: 60 } : { limit: 100, window: 60 };
     const rateLimitMiddleware = createRateLimitMiddleware(rateLimit);
 
     try {
-      // Health check endpoint (no middleware)
+      // Health check endpoint
       if (url.pathname === "/health") {
-        return Response.json({
+        await loggerMiddleware(context);
+        const response = Response.json({
           status: "ok",
           service: "proxy",
           timestamp: Date.now(),
           environment: env.ENVIRONMENT,
         });
+        logResponse(context, 200);
+        return withCorsHeaders(response);
       }
 
       // Apply middleware chain (logger only, no auth for proxy - handled downstream)
