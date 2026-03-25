@@ -149,13 +149,6 @@ function handleStreamingResponse(
     // Log error status
     logResponse(context, status);
 
-    // CRITICAL: Must consume the stream before returning error response
-    // If we don't consume it, the connection will hang and may cause
-    // "Body has already been used" errors when the stream is eventually cleaned up
-    consumeStreamQuietly(stream, requestId).catch((err) => {
-      console.error(`[${requestId}] Failed to consume error stream: ${err}`);
-    });
-
     // Record error usage log if context is available
     if (usageContext) {
       const errorUsage = {
@@ -181,21 +174,19 @@ function handleStreamingResponse(
       });
     }
 
-    // Return error response with CORS headers
-    const headers = new Headers();
-    headers.set("Content-Type", "application/json");
+    // Pass through the upstream error response directly to the client
+    // This preserves the original error content and content-type
+    const headers = new Headers(response.headers);
     headers.set("Access-Control-Allow-Origin", "*");
     headers.set("X-CORS-Handled", "1");
 
-    return new Response(
-      JSON.stringify({
-        error: {
-          type: "upstream_error",
-          message: `Upstream API returned error status: ${status}`,
-        },
-      }),
-      { headers, status }
-    );
+    // Return the upstream stream directly - no tee() needed for error responses
+    // since we're not doing any parsing
+    return new Response(stream, {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
   }
 
   // Log success status

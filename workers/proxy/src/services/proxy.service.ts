@@ -291,13 +291,15 @@ export class ProxyService {
         };
       }
 
-      // For non-streaming error responses, extract error body and recreate response
+      // For non-streaming error responses, pass through the upstream error response
+      // Read the body to recreate the response, but preserve original content-type
       const errorText = await response.text();
       console.error(`[executeRequest] Error response body: ${errorText.substring(0, 200)}`);
 
-      // Recreate response with error body
+      // Recreate response with error body, preserving original headers
       const headers = new Headers(response.headers);
-      headers.set("Content-Type", "application/json");
+      // Don't override content-type - preserve upstream's content-type
+      // headers.set("Content-Type", "application/json");
 
       return {
         response: new Response(errorText, {
@@ -385,12 +387,26 @@ export class ProxyService {
       "x-request-id": requestId,
     };
 
-    // Forward anthropic-beta headers from client if present
-    // This enables beta features like tools, computer use, extended thinking
+    // Headers that should NOT be forwarded from client
+    // - Authentication headers: we use our own credential
+    // - Proxy-specific headers: internal use only
+    const blockedHeaders = new Set([
+      "authorization",
+      "x-api-key",
+      "x-request-id",
+      "host",
+      "content-length",
+      "content-type",  // We set our own
+    ]);
+
+    // Forward all client headers except blocked ones
+    // This enables beta features and maintains full compatibility with upstream API
     if (clientHeaders) {
-      const betaHeaders = clientHeaders.get("anthropic-beta");
-      if (betaHeaders) {
-        headers["anthropic-beta"] = betaHeaders;
+      for (const [key, value] of clientHeaders.entries()) {
+        const lowerKey = key.toLowerCase();
+        if (!blockedHeaders.has(lowerKey) && value) {
+          headers[key] = value;
+        }
       }
     }
 
