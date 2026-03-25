@@ -67,26 +67,21 @@ export async function handleMessages(
     // We need to add CORS and rate limit headers
     const response = result.response;
 
-    // Create new response with CORS headers
-    const headers = new Headers(response.headers);
-    headers.set("Access-Control-Allow-Origin", "*");
-    // Add marker to indicate CORS is already handled
-    headers.set("X-CORS-Handled", "1");
+    // SAFELY add CORS and rate limit headers by modifying the Response directly.
+    // This avoids creating a new Response with the body, which could cause
+    // "ReadableStream is disturbed" errors in edge cases.
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("X-CORS-Handled", "1");
 
     // Add rate limit headers
     const rateLimit = getRateLimitHeaders(context);
     if (rateLimit) {
-      headers.set("RateLimit-Limit", rateLimit["RateLimit-Limit"]);
-      headers.set("RateLimit-Remaining", rateLimit["RateLimit-Remaining"]);
-      headers.set("RateLimit-Reset", rateLimit["RateLimit-Reset"]);
+      response.headers.set("RateLimit-Limit", rateLimit["RateLimit-Limit"]);
+      response.headers.set("RateLimit-Remaining", rateLimit["RateLimit-Remaining"]);
+      response.headers.set("RateLimit-Reset", rateLimit["RateLimit-Reset"]);
     }
 
-    const newResponse = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers
-    });
-    return withResponseLogging(newResponse, context);
+    return withResponseLogging(response, context);
   } catch (error) {
     return handleMessagesError(error, context, env);
   }
@@ -415,54 +410,53 @@ function handleMessagesError(error: unknown, context: RequestContext, env?: Env)
     });
   }
 
+  // Build error response object
+  let errorResponseBody: { error: { type: string; message: string } };
+  let status: number;
+
   // Handle known error types
   if (error instanceof QuotaExceededError) {
-    return Response.json(
-      {
-        error: {
-          type: "quota_exceeded_error",
-          message: error.message,
-        },
+    errorResponseBody = {
+      error: {
+        type: "quota_exceeded_error",
+        message: error.message,
       },
-      { status: 402 }
-    );
-  }
-
-  if (error instanceof ValidationError) {
-    return Response.json(
-      {
-        error: {
-          type: "invalid_request_error",
-          message: error.message,
-        },
+    };
+    status = 402;
+  } else if (error instanceof ValidationError) {
+    errorResponseBody = {
+      error: {
+        type: "invalid_request_error",
+        message: error.message,
       },
-      { status: 400 }
-    );
-  }
-
-  // Handle auth errors (401)
-  if (error instanceof Error && error.name === "UnauthorizedError") {
-    return Response.json(
-      {
-        error: {
-          type: "authentication_error",
-          message: error.message,
-        },
+    };
+    status = 400;
+  } else if (error instanceof Error && error.name === "UnauthorizedError") {
+    errorResponseBody = {
+      error: {
+        type: "authentication_error",
+        message: error.message,
       },
-      { status: 401 }
-    );
-  }
-
-  // Generic error response
-  return Response.json(
-    {
+    };
+    status = 401;
+  } else {
+    // Generic error response
+    errorResponseBody = {
       error: {
         type: "internal_error",
         message: "An unexpected error occurred",
       },
-    },
-    { status: 500 }
-  );
+    };
+    status = 500;
+  }
+
+  // Create response with CORS headers already set
+  // This prevents withCorsHeaders from trying to process the response
+  const response = Response.json(errorResponseBody, { status });
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.set("X-CORS-Handled", "1");
+
+  return response;
 }
 
 /**

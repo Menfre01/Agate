@@ -65,10 +65,13 @@ export async function handleModels(
     data,
   };
 
-  return withResponseLogging(
-    Response.json(response),
-    context
-  );
+  // Create response with CORS headers already set
+  // This prevents withCorsHeaders from trying to process the response
+  const resp = Response.json(response);
+  resp.headers.set("Access-Control-Allow-Origin", "*");
+  resp.headers.set("X-CORS-Handled", "1");
+
+  return withResponseLogging(resp, context);
 }
 
 /**

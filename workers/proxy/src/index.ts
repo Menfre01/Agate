@@ -53,8 +53,13 @@ function handleCorsPreflight(request: Request): Response | null {
 /**
  * Adds CORS headers to response.
  *
- * For streaming responses, this checks the X-CORS-Handled marker to avoid
- * accessing the stream body, which would cause "disturbed stream" errors.
+ * IMPORTANT: This function MUST NOT create a new Response with response.body,
+ * as that can cause "ReadableStream is disturbed" errors when the body has already
+ * been used or is locked. Instead, we only modify headers directly on the existing
+ * Response object, which is safe and does not disturb the stream.
+ *
+ * Route handlers are responsible for setting X-CORS-Handled to indicate they've
+ * already added CORS headers, preventing duplicate processing.
  */
 function withCorsHeaders(response: Response): Response {
   // Check if CORS handling is already done by the handler
@@ -68,16 +73,11 @@ function withCorsHeaders(response: Response): Response {
     return response;
   }
 
-  // For non-streaming responses, create a new Response with CORS headers
-  try {
-    const newResponse = new Response(response.body, response);
-    newResponse.headers.set("Access-Control-Allow-Origin", "*");
-    return newResponse;
-  } catch {
-    // Body is disturbed or otherwise unusable, fallback to direct header modification
-    response.headers.set("Access-Control-Allow-Origin", "*");
-    return response;
-  }
+  // SAFELY add CORS header by directly modifying the existing Response object.
+  // This does NOT disturb the body stream because we're only changing headers.
+  // Note: In most cases, Response.headers.set() is safe even if the body is locked.
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  return response;
 }
 
 /**
