@@ -97,10 +97,18 @@ export async function handleMessages(
  * This prevents "ReadableStream is disturbed" errors by ensuring each
  * branch has its own independent stream that can be read separately.
  *
- * Token collection strategy:
+ * Token collection strategy (Anthropic SSE format):
  * - input_tokens: from message_start event (always available early in stream)
  * - output_tokens: accumulated from content_block_delta events as fallback,
  *                  overridden by message_delta event when available (final accurate count)
+ *
+ * SSE event types:
+ * - message_start: { type: "message_start", message: { usage: { input_tokens } } }
+ * - content_block_start: { type: "content_block_start", index: number }
+ * - content_block_delta: { type: "content_block_delta", index: number, delta: { type: "text_delta", text: string } }
+ * - content_block_stop: { type: "content_block_stop", index: number }
+ * - message_delta: { type: "message_delta", delta: { stop_reason: string }, usage: { output_tokens } }
+ * - message_stop: { type: "message_stop" }
  *
  * @param result - Streaming proxy result
  * @param context - Request context
@@ -126,33 +134,86 @@ function handleStreamingResponse(
   context: RequestContext,
   env: Env
 ): Response {
-  const { response, requestId, usageContext } = result;
+  const { response, requestId, usageContext, stream } = result;
 
-  // Log response status
-  logResponse(context, 200);
+  // Check if upstream returned an error status code
+  // Even for streaming responses, we need to check the status code before processing
+  const status = response.status;
+  const isError = status < 200 || status >= 400;
 
-  // If no usage context, return response without usage tracking
-  // Mark that CORS headers are already added to prevent withCorsHeaders from modifying the stream
-  if (!usageContext) {
-    const headers = new Headers(response.headers);
-    headers.set("Access-Control-Allow-Origin", "*");
-    // Add a marker to indicate CORS headers are already handled
-    headers.set("X-CORS-Handled", "1");
-    return new Response(response.body, {
-      headers,
-      status: response.status,
+  if (isError) {
+    // Log error status
+    logResponse(context, status);
+
+    // CRITICAL: Must consume the stream before returning error response
+    // If we don't consume it, the connection will hang and may cause
+    // "Body has already been used" errors when the stream is eventually cleaned up
+    consumeStreamQuietly(stream, requestId).catch((err) => {
+      console.error(`[${requestId}] Failed to consume error stream: ${err}`);
     });
+
+    // Record error usage log if context is available
+    if (usageContext) {
+      const errorUsage = {
+        apiKeyId: usageContext.apiKeyId,
+        userId: usageContext.userId,
+        companyId: null,
+        departmentId: usageContext.departmentId,
+        providerId: usageContext.providerId,
+        modelId: usageContext.modelId,
+        modelName: usageContext.modelName,
+        endpoint: "/v1/messages",
+        inputTokens: 0,
+        outputTokens: 0,
+        status: "error" as const,
+        errorCode: `UPSTREAM_ERROR_${status}`,
+        requestId,
+        responseTimeMs: Date.now() - usageContext.startTime,
+      };
+
+      const usageService = new UsageService(env);
+      usageService.recordUsage(errorUsage).catch((err) => {
+        console.error(`[${requestId}] Failed to record error usage: ${err}`);
+      });
+    }
+
+    // Return error response with CORS headers
+    const headers = new Headers();
+    headers.set("Content-Type", "application/json");
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("X-CORS-Handled", "1");
+
+    return new Response(
+      JSON.stringify({
+        error: {
+          type: "upstream_error",
+          message: `Upstream API returned error status: ${status}`,
+        },
+      }),
+      { headers, status }
+    );
   }
 
-  // Use tee() to split the stream into two independent branches
-  // Branch 1: For parsing and recording usage (consumed fully, doesn't affect client)
-  // Branch 2: For returning to the client (passed through)
-  const [parseBranch, clientBranch] = result.stream.tee();
+  // Log success status
+  logResponse(context, 200);
 
-  // Start parsing asynchronously (don't block the response)
-  parseStreamForUsage(parseBranch, requestId, usageContext, env).catch((err) => {
-    console.error(`[${requestId}] Failed to parse stream for usage: ${err}`);
-  });
+  // Always use tee() to split the stream, even without usage context
+  // This ensures the stream is properly handled and prevents "Body has already been used" errors
+  // by creating independent branches for any potential consumption
+  const [parseBranch, clientBranch] = stream.tee();
+
+  // Start parsing asynchronously if usage context is available (don't block the response)
+  if (usageContext) {
+    parseStreamForUsage(parseBranch, requestId, usageContext, env).catch((err) => {
+      console.error(`[${requestId}] Failed to parse stream for usage: ${err}`);
+    });
+  } else {
+    // No usage context - still need to consume the parse branch to avoid hanging
+    // The client branch will be read by the client, but the parse branch must also be consumed
+    consumeStreamQuietly(parseBranch, requestId).catch((err) => {
+      console.error(`[${requestId}] Failed to consume parse branch: ${err}`);
+    });
+  }
 
   // Build response headers with CORS and rate limit
   const headers = new Headers(response.headers);
@@ -174,6 +235,27 @@ function handleStreamingResponse(
     headers,
     status: response.status,
   });
+}
+
+/**
+ * Consumes a stream without processing it.
+ * Used when we need to drain a stream branch but don't care about its content.
+ *
+ * @param stream - The stream to consume
+ * @param requestId - Request ID for logging
+ */
+async function consumeStreamQuietly(stream: ReadableStream, requestId: string): Promise<void> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  } catch (err) {
+    console.warn(`[${requestId}] Error consuming stream quietly: ${err}`);
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /**
@@ -281,42 +363,84 @@ async function parseStreamForUsage(
       switch (data.type) {
         case 'message_start':
           // Contains input_tokens (always sent early in stream)
+          // Format: { type: "message_start", message: { id, type, role, content, usage: { input_tokens } } }
           if (data.message?.usage?.input_tokens !== undefined) {
             inputTokens = data.message.usage.input_tokens;
+            console.log(`[${requestId}] Captured input_tokens from message_start: ${inputTokens}`);
+          } else {
+            // Log warning if input_tokens is missing from message_start
+            console.warn(
+              `[${requestId}] message_start event missing usage.input_tokens. ` +
+              `Event keys: ${Object.keys(data).join(', ')}, ` +
+              `message keys: ${data.message ? Object.keys(data.message).join(', ') : 'null'}`
+            );
           }
           break;
 
         case 'content_block_delta':
-          // Incremental output tokens - accumulate as fallback
-          // This ensures we have some count even if message_delta is lost
-          if (data.delta?.type === "content_block_delta" && data.usage?.output_tokens !== undefined) {
-            accumulatedOutputTokens += data.usage.output_tokens;
-          }
-          // Also handle direct usage field
+          // Contains incremental delta, not usage field in standard Anthropic format
+          // Format: { type: "content_block_delta", index: number, delta: { type: "text_delta"|"input_json_delta", text?: string, partial_json?: string } }
+          // NOTE: Standard Anthropic API does NOT include usage in content_block_delta
+          // Some third-party providers may include it, so we handle it as a fallback
           if (data.usage?.output_tokens !== undefined) {
-            // Some providers send incremental tokens, some send cumulative
-            // If this is smaller than accumulated, it's likely incremental
+            // Determine if this is incremental or cumulative based on value
+            // If current value is much smaller than accumulated, it's likely incremental
+            // Otherwise, treat as cumulative (replace accumulated value)
             if (data.usage.output_tokens < accumulatedOutputTokens && accumulatedOutputTokens > 0) {
+              // Likely incremental - add to accumulated
               accumulatedOutputTokens += data.usage.output_tokens;
             } else {
+              // Likely cumulative - replace accumulated value
               accumulatedOutputTokens = data.usage.output_tokens;
             }
           }
+          // Standard approach: count each content_block_delta as having some tokens
+          // We'll use message_delta for accurate counting, but track deltas as rough estimate
           break;
 
         case 'message_delta':
           // Final accurate output token count (sent at end of stream)
+          // Format: { type: "message_delta", delta: { stop_reason: "end_turn"|"max_tokens"|"stop_sequence" }, usage: { output_tokens } }
           if (data.usage?.output_tokens !== undefined) {
             outputTokens = data.usage.output_tokens;
+            console.log(`[${requestId}] Captured output_tokens from message_delta: ${outputTokens}`);
           }
           break;
 
         case 'message_stop':
           // Stream completed normally
+          // Format: { type: "message_stop" }
+          console.log(`[${requestId}] Received message_stop, stream completed`);
+          break;
+
+        case 'content_block_start':
+        case 'content_block_stop':
+          // These events don't contain usage information
+          // content_block_start: { type: "content_block_start", index: number, content_block: { type, text } }
+          // content_block_stop: { type: "content_block_stop", index: number }
+          break;
+
+        case 'ping':
+          // Keep-alive ping, ignore
+          break;
+
+        case 'error':
+          // Error event from upstream
+          // Format: { type: "error", error: { type, message } }
+          console.warn(`[${requestId}] Error event in stream: ${data.error?.message}`);
+          break;
+
+        default:
+          // Log unknown event types for debugging
+          console.log(`[${requestId}] Unknown SSE event type: ${data.type}`);
           break;
       }
-    } catch {
-      // Ignore JSON parse errors for malformed or incomplete data
+    } catch (parseErr) {
+      // Log JSON parse errors for debugging (don't throw, just log)
+      console.error(
+        `[${requestId}] Failed to parse SSE data: ${parseErr}. ` +
+        `Data line (first 200 chars): ${jsonStr.substring(0, 200)}`
+      );
     }
   };
 
@@ -356,9 +480,12 @@ async function parseStreamForUsage(
       processBuffer();
     }
   } catch (err: unknown) {
-    // Read error
+    // Read error - could be client disconnect, network error, or malformed SSE
     const errorCode = (err as Error)?.name === "AbortError" ? "CLIENT_DISCONNECT" : "STREAM_ERROR";
     recordUsage("error", errorCode);
+  } finally {
+    // Always release the reader lock to prevent resource leaks
+    reader.releaseLock();
   }
 }
 
