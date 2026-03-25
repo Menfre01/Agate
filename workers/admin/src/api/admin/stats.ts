@@ -39,10 +39,12 @@ export async function getUsageStats(
     user_id: url.searchParams.get("user_id") ?? undefined,
     model_id: url.searchParams.get("model_id") ?? undefined,
     group_by: url.searchParams.get("group_by") as
+      | "hour"
+      | "day"
+      | "week"
       | "department"
       | "user"
       | "model"
-      | "day"
       | undefined,
   };
 
@@ -116,6 +118,66 @@ export async function getTokenUsage(
       input_tokens: summary.input_tokens,
       output_tokens: summary.output_tokens,
       by_entity: byEntity,
+    }),
+    context
+  );
+}
+
+/**
+ * Handles GET /user/stats/tokens/trend - Token usage trend by time period.
+ *
+ * For user endpoint, automatically filters to the authenticated user's data.
+ */
+export async function getTokenUsageTrend(
+  request: Request,
+  env: Env,
+  context: RequestContext
+): Promise<Response> {
+  const url = new URL(request.url);
+  const usageService = new UsageService(env);
+  const auth = context.metadata.get("auth") as AuthContext | undefined;
+
+  // Get user_id from auth context for user endpoint
+  const userId = auth?.userId;
+
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Calculate time range based on period
+  const period = url.searchParams.get("period") ?? "day";
+  const now = Date.now();
+  let startAt = now - 86400000;
+  let groupBy: "hour" | "day" | "week" = "hour";
+
+  switch (period) {
+    case "day":
+      startAt = now - 86400000;
+      groupBy = "hour";
+      break;
+    case "week":
+      startAt = now - 86400000 * 7;
+      groupBy = "day";
+      break;
+    case "month":
+      startAt = now - 86400000 * 30;
+      groupBy = "week";
+      break;
+  }
+
+  const stats = await usageService.getUsageStats({
+    start_at: startAt,
+    end_at: now,
+    user_id: userId,
+    group_by: groupBy,
+  });
+
+  return withResponseLogging(
+    Response.json({
+      period,
+      start_at: startAt,
+      end_at: now,
+      grouped: stats.grouped,
     }),
     context
   );
@@ -287,6 +349,10 @@ export function statsRouteHandler(
   try {
     if ((pathname === "/admin/stats/tokens" || pathname === "/user/stats/tokens") && request.method === "GET") {
       return getTokenUsage(request, env, context);
+    }
+
+    if (pathname === "/user/stats/tokens/trend" && request.method === "GET") {
+      return getTokenUsageTrend(request, env, context);
     }
 
     // Admin-only endpoints below

@@ -175,6 +175,8 @@ export interface UsageStatsResponse {
   grouped: Array<{
     key: string
     requests: number
+    input_tokens: number
+    output_tokens: number
     tokens: number
     cost: number
   }>
@@ -193,6 +195,8 @@ export interface TokenUsageResponse {
     entity_id: string
     entity_name: string | null
     total_tokens: number
+    input_tokens: number
+    output_tokens: number
     request_count: number
   }>
 }

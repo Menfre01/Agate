@@ -192,7 +192,7 @@ export class UsageService {
       model_id: query.model_id,
     });
 
-    const grouped: Array<{ key: string; requests: number; tokens: number; cost: number }> = [];
+    const grouped: Array<{ key: string; requests: number; input_tokens: number; output_tokens: number; tokens: number; cost: number }> = [];
 
     if (query.group_by) {
       const groupedStats = await queries.getUsageStatsGrouped(this.db, {
@@ -204,6 +204,8 @@ export class UsageService {
         grouped.push({
           key: row.group_key,
           requests: row.request_count,
+          input_tokens: row.input_tokens ?? 0,
+          output_tokens: row.output_tokens ?? 0,
           tokens: row.total_tokens,
           cost: row.estimated_cost,
         });

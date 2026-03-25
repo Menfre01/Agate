@@ -131,6 +131,8 @@ export class ProxyService {
     const startTime = Date.now();
     const requestId = crypto.randomUUID();
 
+    console.info(`[Proxy] Request started: requestId=${requestId}, userId=${authContext.userId}, model=${request.model}, stream=${request.stream ?? false}`);
+
     // Validate model access
     const model = await this.modelService.getByModelId(request.model);
     if (!model || !model.is_active) {
@@ -180,11 +182,15 @@ export class ProxyService {
       });
     }
 
+    console.info(`[Proxy] Quota check passed: requestId=${requestId}, estimatedTokens=${estimatedTokens}`);
+
     // Select provider credential
     const credential = await this.providerService.selectCredential(
       model.id,
       apiKey.id
     );
+
+    console.info(`[Proxy] Provider selected: requestId=${requestId}, providerId=${credential.providerId}, credentialId=${credential.credentialId}`);
 
     // Build upstream request and get actual upstream model name
     // Priority: credential.actualModelId > model.alias > request.model
@@ -197,6 +203,8 @@ export class ProxyService {
       clientRequest?.headers
     );
 
+    console.info(`[Proxy] Sending upstream request: requestId=${requestId}, url=${credential.baseUrl}/v1/messages, model=${upstreamModel}`);
+
     // Execute request
     const result = await this.executeRequest(
       upstreamRequest,
@@ -207,6 +215,7 @@ export class ProxyService {
 
     // Process usage based on response type
     if (result.streaming) {
+      console.info(`[Proxy] Streaming response: requestId=${requestId}, responseTimeMs=${result.responseTimeMs}`);
       // For streaming: include context for usage recording after stream completes
       return {
         ...result,
@@ -226,6 +235,8 @@ export class ProxyService {
     // For non-streaming: usage is already extracted in executeRequest
     // The response was recreated with fresh body, so usage is available in result.usage
     const usage = result.usage;
+
+    console.info(`[Proxy] Request completed: requestId=${requestId}, status=${result.response.status}, responseTimeMs=${result.responseTimeMs}, inputTokens=${usage.input_tokens}, outputTokens=${usage.output_tokens}`);
 
     // Deduct quota (Phase 1: only for system user)
     const actualTokens = usage.input_tokens + usage.output_tokens;
@@ -250,6 +261,8 @@ export class ProxyService {
 
     // Update last_used_at
     await this.usageService.updateLastUsed(apiKey.id);
+
+    console.info(`[Proxy] Usage recorded: requestId=${requestId}, tokens=${usage.input_tokens + usage.output_tokens}`);
 
     return result;
   }

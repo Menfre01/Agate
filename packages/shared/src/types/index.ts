@@ -821,8 +821,8 @@ export interface UsageStatsQuery {
   start_at: number;
   /** End timestamp (exclusive) */
   end_at: number;
-  /** Group by dimension ('day' | 'model' | 'user' | 'department') */
-  group_by?: 'day' | 'model' | 'user' | 'department';
+  /** Group by dimension ('hour' | 'day' | 'week' | 'model' | 'user' | 'department') */
+  group_by?: 'hour' | 'day' | 'week' | 'model' | 'user' | 'department';
   /** Company ID filter (optional) */
   company_id?: string;
   /** Department ID filter (optional) */
@@ -857,7 +857,11 @@ export interface UsageStatsResponse {
     key: string;
     /** Request count */
     requests: number;
-    /** Token count */
+    /** Input tokens */
+    input_tokens: number;
+    /** Output tokens */
+    output_tokens: number;
+    /** Token count (total) */
     tokens: number;
     /** Cost */
     cost: number;
@@ -1476,6 +1480,10 @@ export interface TokenUsageResponse {
     entity_name: string | null;
     /** Total tokens */
     total_tokens: number;
+    /** Input tokens */
+    input_tokens: number;
+    /** Output tokens */
+    output_tokens: number;
     /** Request count */
     request_count: number;
   }>;

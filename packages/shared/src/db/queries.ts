@@ -2463,10 +2463,18 @@ export const getUsageStatsGrouped = async (db: D1Database, options: {
   let selectClause: string;
   let groupByClause: string;
 
-  if (options.group_by === 'day') {
+  if (options.group_by === 'hour') {
+    // Group by hour: format timestamp as YYYY-MM-DD HH
+    selectClause = `strftime('%Y-%m-%d %H:00', datetime(created_at / 1000, 'unixepoch')) as group_key`;
+    groupByClause = `strftime('%Y-%m-%d %H', datetime(created_at / 1000, 'unixepoch'))`;
+  } else if (options.group_by === 'day') {
     // Group by date: format timestamp as YYYY-MM-DD
     selectClause = `date(created_at / 1000, 'unixepoch') as group_key`;
     groupByClause = `date(created_at / 1000, 'unixepoch')`;
+  } else if (options.group_by === 'week') {
+    // Group by week: format timestamp as YYYY-Www (ISO week)
+    selectClause = `strftime('%Y-W%W', datetime(created_at / 1000, 'unixepoch')) as group_key`;
+    groupByClause = `strftime('%Y-W%W', datetime(created_at / 1000, 'unixepoch'))`;
   } else if (options.group_by === 'model') {
     selectClause = `'model-' || model_id as group_key`;
     groupByClause = `model_id`;
@@ -2480,7 +2488,7 @@ export const getUsageStatsGrouped = async (db: D1Database, options: {
   }
 
   const result = await db.prepare(
-    `SELECT ${selectClause}, COUNT(*) as request_count, SUM(total_tokens) as total_tokens, SUM(total_tokens * 0.00001) as estimated_cost FROM usage_logs ${whereClause} GROUP BY ${groupByClause}`
+    `SELECT ${selectClause}, COUNT(*) as request_count, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens, SUM(total_tokens * 0.00001) as estimated_cost FROM usage_logs ${whereClause} GROUP BY ${groupByClause}`
   ).bind(...params).all();
   return result.results;
 };

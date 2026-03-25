@@ -365,7 +365,7 @@ export async function removeModelProvider(modelId: string, providerId: string): 
 export async function getUsageStats(query: {
   start_at: number
   end_at: number
-  group_by?: 'day' | 'model' | 'user' | 'department'
+  group_by?: 'hour' | 'day' | 'week' | 'model' | 'user' | 'department'
   company_id?: string
   department_id?: string
   user_id?: string

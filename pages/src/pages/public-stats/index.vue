@@ -111,21 +111,21 @@
       <n-grid :cols="3" :x-gap="16">
         <n-grid-item>
           <n-card>
-            <n-statistic label="总 Token 数" :value="tokenUsage.total_tokens || 0">
+            <n-statistic label="总 Token 数" :value="formatTokens(tokenUsage.total_tokens || 0)">
               <template #suffix>tokens</template>
             </n-statistic>
           </n-card>
         </n-grid-item>
         <n-grid-item>
           <n-card>
-            <n-statistic label="输入 Token" :value="tokenUsage.input_tokens || 0">
+            <n-statistic label="输入 Token" :value="formatTokens(tokenUsage.input_tokens || 0)">
               <template #suffix>tokens</template>
             </n-statistic>
           </n-card>
         </n-grid-item>
         <n-grid-item>
           <n-card>
-            <n-statistic label="输出 Token" :value="tokenUsage.output_tokens || 0">
+            <n-statistic label="输出 Token" :value="formatTokens(tokenUsage.output_tokens || 0)">
               <template #suffix>tokens</template>
             </n-statistic>
           </n-card>
@@ -137,10 +137,24 @@
         <div ref="trendChartRef" class="chart-container"></div>
       </n-card>
 
-      <!-- 模型使用分布 -->
-      <n-card title="模型使用分布">
-        <div ref="modelChartRef" class="chart-container"></div>
-      </n-card>
+      <!-- Token 分布 -->
+      <n-grid :cols="3" :x-gap="16">
+        <n-grid-item>
+          <n-card title="总 Token 分布">
+            <div ref="totalChartRef" class="chart-container-small"></div>
+          </n-card>
+        </n-grid-item>
+        <n-grid-item>
+          <n-card title="输入 Token 分布">
+            <div ref="inputChartRef" class="chart-container-small"></div>
+          </n-card>
+        </n-grid-item>
+        <n-grid-item>
+          <n-card title="输出 Token 分布">
+            <div ref="outputChartRef" class="chart-container-small"></div>
+          </n-card>
+        </n-grid-item>
+      </n-grid>
     </template>
   </div>
 </template>
@@ -187,6 +201,15 @@ const tokenUsage = ref<TokenUsageResponse>({
   output_tokens: 0,
   by_entity: [],
 })
+
+// Token 趋势数据
+interface TokenTrendData {
+  key: string
+  input_tokens: number
+  output_tokens: number
+  tokens: number
+}
+const tokenTrend = ref<TokenTrendData[]>([])
 const loading = ref(false)
 const error = ref('')
 const period = ref<'day' | 'week' | 'month'>('week')
@@ -205,9 +228,13 @@ const refreshOptions = [
 
 // 图表引用
 const trendChartRef = ref<HTMLElement>()
-const modelChartRef = ref<HTMLElement>()
+const totalChartRef = ref<HTMLElement>()
+const inputChartRef = ref<HTMLElement>()
+const outputChartRef = ref<HTMLElement>()
 let trendChart: echarts.ECharts | null = null
-let modelChart: echarts.ECharts | null = null
+let totalChart: echarts.ECharts | null = null
+let inputChart: echarts.ECharts | null = null
+let outputChart: echarts.ECharts | null = null
 
 // 计算属性
 const remainingQuota = computed(() => {
@@ -272,14 +299,16 @@ async function loadTokenUsage() {
   try {
     const api = createApiInstance(apiKey.value)
 
-    // 计算时间范围
-    const now = Date.now()
-    let startAt = now - 86400000
-    if (period.value === 'week') startAt = now - 86400000 * 7
-    if (period.value === 'month') startAt = now - 86400000 * 30
+    // 并行加载汇总数据和趋势数据
+    const [usageResponse, trendResponse] = await Promise.all([
+      api.get<TokenUsageResponse>(`/user/stats/tokens?period=${period.value}`),
+      api.get<{ period: string; start_at: number; end_at: number; grouped: TokenTrendData[] }>(
+        `/user/stats/tokens/trend?period=${period.value}`
+      ),
+    ])
 
-    const response = await api.get<TokenUsageResponse>(`/user/stats/tokens?period=${period.value}`)
-    tokenUsage.value = response.data
+    tokenUsage.value = usageResponse.data
+    tokenTrend.value = trendResponse.data.grouped || []
 
     await nextTick()
     renderCharts()
@@ -291,7 +320,16 @@ async function loadTokenUsage() {
 // 渲染图表
 function renderCharts() {
   renderTrendChart()
-  renderModelChart()
+  renderTotalChart()
+  renderInputChart()
+  renderOutputChart()
+}
+
+// 格式化 token 数值
+function formatTokens(value: number): string {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
+  return value.toString()
 }
 
 function renderTrendChart() {
@@ -301,15 +339,25 @@ function renderTrendChart() {
     trendChart = echarts.init(trendChartRef.value)
   }
 
-  // 按实体分组的数据
-  const entityData = tokenUsage.value.by_entity || []
+  // 按时间分组的数据
+  const data = tokenTrend.value || []
 
   const option: EChartsOption = {
     tooltip: {
       trigger: 'axis',
+      formatter: (params: any) => {
+        let result = `${params[0].axisValue}<br/>`
+        params.forEach((p: any) => {
+          result += `${p.marker} ${p.seriesName}: ${formatTokens(p.value)}<br/>`
+        })
+        return result
+      },
     },
     legend: {
-      data: ['输入 Token', '输出 Token'],
+      data: ['总 Token', '输入 Token', '输出 Token'],
+      orient: 'vertical',
+      right: 10,
+      top: 'center',
     },
     grid: {
       left: '3%',
@@ -320,17 +368,36 @@ function renderTrendChart() {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: entityData.slice(0, 10).map((e) => e.entity_name || e.entity_id),
+      data: data.map((d) => d.key),
     },
     yAxis: {
       type: 'value',
+      name: 'Token 数',
     },
     series: [
       {
-        name: 'Token 总量',
-        type: 'bar',
-        data: entityData.slice(0, 10).map((e) => e.total_tokens),
+        name: '总 Token',
+        type: 'line',
+        smooth: true,
+        data: data.map((d) => d.tokens),
+        itemStyle: { color: '#2080f0' },
+        lineStyle: { color: '#2080f0' },
+      },
+      {
+        name: '输入 Token',
+        type: 'line',
+        smooth: true,
+        data: data.map((d) => d.input_tokens),
         itemStyle: { color: '#18a058' },
+        lineStyle: { color: '#18a058' },
+      },
+      {
+        name: '输出 Token',
+        type: 'line',
+        smooth: true,
+        data: data.map((d) => d.output_tokens),
+        itemStyle: { color: '#e6a23c' },
+        lineStyle: { color: '#e6a23c' },
       },
     ],
   }
@@ -338,11 +405,11 @@ function renderTrendChart() {
   trendChart.setOption(option)
 }
 
-function renderModelChart() {
-  if (!modelChartRef.value) return
+function renderTotalChart() {
+  if (!totalChartRef.value) return
 
-  if (!modelChart) {
-    modelChart = echarts.init(modelChartRef.value)
+  if (!totalChart) {
+    totalChart = echarts.init(totalChartRef.value)
   }
 
   const data = tokenUsage.value.by_entity?.map((e) => ({
@@ -353,30 +420,76 @@ function renderModelChart() {
   const option: EChartsOption = {
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} tokens ({d}%)',
+      formatter: (params: any) => `${params.name}: ${formatTokens(params.value)} (${params.percent}%)`,
     },
-    legend: {
-      orient: 'vertical',
-      left: 'left',
-    },
-    series: [
-      {
-        name: 'Token 使用量',
-        type: 'pie',
-        radius: '60%',
-        data,
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: 'rgba(0, 0, 0, 0.5)',
-          },
-        },
-      },
-    ],
+    series: [{
+      type: 'pie',
+      radius: '70%',
+      data,
+      label: { show: false },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
+    }],
   }
 
-  modelChart.setOption(option)
+  totalChart.setOption(option)
+}
+
+function renderInputChart() {
+  if (!inputChartRef.value) return
+
+  if (!inputChart) {
+    inputChart = echarts.init(inputChartRef.value)
+  }
+
+  const data = tokenUsage.value.by_entity?.map((e) => ({
+    name: e.entity_name || e.entity_id,
+    value: e.input_tokens,
+  })) || []
+
+  const option: EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => `${params.name}: ${formatTokens(params.value)} (${params.percent}%)`,
+    },
+    series: [{
+      type: 'pie',
+      radius: '70%',
+      data,
+      label: { show: false },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
+    }],
+  }
+
+  inputChart.setOption(option)
+}
+
+function renderOutputChart() {
+  if (!outputChartRef.value) return
+
+  if (!outputChart) {
+    outputChart = echarts.init(outputChartRef.value)
+  }
+
+  const data = tokenUsage.value.by_entity?.map((e) => ({
+    name: e.entity_name || e.entity_id,
+    value: e.output_tokens,
+  })) || []
+
+  const option: EChartsOption = {
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => `${params.name}: ${formatTokens(params.value)} (${params.percent}%)`,
+    },
+    series: [{
+      type: 'pie',
+      radius: '70%',
+      data,
+      label: { show: false },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
+    }],
+  }
+
+  outputChart.setOption(option)
 }
 
 // 清除 API Key
@@ -392,6 +505,7 @@ function clearApiKey() {
     output_tokens: 0,
     by_entity: [],
   }
+  tokenTrend.value = []
   sessionStorage.removeItem('public_api_key')
   inputApiKey.value = ''
   stopAutoRefresh()
@@ -462,7 +576,9 @@ onMounted(() => {
   // 监听窗口大小变化
   window.addEventListener('resize', () => {
     trendChart?.resize()
-    modelChart?.resize()
+    totalChart?.resize()
+    inputChart?.resize()
+    outputChart?.resize()
   })
 })
 
@@ -518,5 +634,10 @@ onUnmounted(() => {
 .chart-container {
   width: 100%;
   height: 400px;
+}
+
+.chart-container-small {
+  width: 100%;
+  height: 300px;
 }
 </style>

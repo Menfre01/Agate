@@ -58,12 +58,30 @@
         </n-spin>
       </n-card>
 
-      <!-- 成本分析 -->
-      <n-card title="成本分析">
-        <n-spin :show="loading">
-          <div ref="costChartEl" class="chart-container"></div>
-        </n-spin>
-      </n-card>
+      <!-- Token 分布 -->
+      <n-grid :cols="3" :x-gap="16">
+        <n-grid-item>
+          <n-card title="总 Token 分布">
+            <n-spin :show="loading">
+              <div ref="totalChartEl" class="chart-container-small"></div>
+            </n-spin>
+          </n-card>
+        </n-grid-item>
+        <n-grid-item>
+          <n-card title="输入 Token 分布">
+            <n-spin :show="loading">
+              <div ref="inputChartEl" class="chart-container-small"></div>
+            </n-spin>
+          </n-card>
+        </n-grid-item>
+        <n-grid-item>
+          <n-card title="输出 Token 分布">
+            <n-spin :show="loading">
+              <div ref="outputChartEl" class="chart-container-small"></div>
+            </n-spin>
+          </n-card>
+        </n-grid-item>
+      </n-grid>
     </n-space>
   </div>
 </template>
@@ -115,11 +133,22 @@ function formatTokens(value: number): string {
 
 // 图表 ref
 const trendChartEl = ref<HTMLElement | null>(null)
-const costChartEl = ref<HTMLElement | null>(null)
+const totalChartEl = ref<HTMLElement | null>(null)
+const inputChartEl = ref<HTMLElement | null>(null)
+const outputChartEl = ref<HTMLElement | null>(null)
 
 // 图表实例
 let trendChart: echarts.ECharts | null = null
-let costChart: echarts.ECharts | null = null
+let totalChart: echarts.ECharts | null = null
+let inputChart: echarts.ECharts | null = null
+let outputChart: echarts.ECharts | null = null
+
+// 根据时间范围获取分组方式
+function getGroupBy(): 'hour' | 'day' | 'week' {
+  if (period.value === 'day') return 'hour'
+  if (period.value === 'week') return 'day'
+  return 'week'
+}
 
 // 加载数据
 async function loadData() {
@@ -131,7 +160,7 @@ async function loadData() {
     if (period.value === 'month') startAt = now - 86400000 * 30
 
     const [usage, models] = await Promise.all([
-      getUsageStats({ start_at: startAt, end_at: now, group_by: 'day' }),
+      getUsageStats({ start_at: startAt, end_at: now, group_by: getGroupBy() }),
       getProviderModelStats({ start_at: startAt, end_at: now }),
     ])
 
@@ -152,7 +181,9 @@ async function loadData() {
 // 渲染图表
 function renderCharts() {
   renderTrendChart()
-  renderCostChart()
+  renderTotalChart()
+  renderInputChart()
+  renderOutputChart()
 }
 
 function renderTrendChart() {
@@ -167,15 +198,25 @@ function renderTrendChart() {
       trendChart = echarts.init(trendChartEl.value)
     }
 
-    // 按日期分组的数据
-    const dayData = usageData.value.grouped.filter((g) => g.key.match(/^\d{4}-\d{2}-\d{2}$/))
+    // 使用所有分组数据
+    const data = usageData.value.grouped
 
     const option: EChartsOption = {
       tooltip: {
         trigger: 'axis',
+        formatter: (params: any) => {
+          let result = `${params[0].axisValue}<br/>`
+          params.forEach((p: any) => {
+            result += `${p.marker} ${p.seriesName}: ${formatTokens(p.value)}<br/>`
+          })
+          return result
+        },
       },
       legend: {
-        data: ['请求数', 'Token 数'],
+        data: ['总 Token', '输入 Token', '输出 Token'],
+        orient: 'vertical',
+        right: 10,
+        top: 'center',
       },
       grid: {
         left: '3%',
@@ -186,35 +227,36 @@ function renderTrendChart() {
       xAxis: {
         type: 'category',
         boundaryGap: false,
-        data: dayData.map((d) => d.key),
+        data: data.map((d) => d.key),
       },
-      yAxis: [
-        {
-          type: 'value',
-          name: '请求数',
-          position: 'left',
-        },
-        {
-          type: 'value',
-          name: 'Token 数',
-          position: 'right',
-        },
-      ],
+      yAxis: {
+        type: 'value',
+        name: 'Token 数',
+      },
       series: [
         {
-          name: '请求数',
-          type: 'bar',
-          yAxisIndex: 0,
-          data: dayData.map((d) => d.requests),
-          itemStyle: { color: '#18a058' },
+          name: '总 Token',
+          type: 'line',
+          smooth: true,
+          data: data.map((d) => d.tokens),
+          itemStyle: { color: '#2080f0' },
+          lineStyle: { color: '#2080f0' },
         },
         {
-          name: 'Token 数',
+          name: '输入 Token',
           type: 'line',
-          yAxisIndex: 1,
           smooth: true,
-          data: dayData.map((d) => d.tokens),
-          areaStyle: { opacity: 0.3 },
+          data: data.map((d) => d.input_tokens),
+          itemStyle: { color: '#18a058' },
+          lineStyle: { color: '#18a058' },
+        },
+        {
+          name: '输出 Token',
+          type: 'line',
+          smooth: true,
+          data: data.map((d) => d.output_tokens),
+          itemStyle: { color: '#e6a23c' },
+          lineStyle: { color: '#e6a23c' },
         },
       ],
     }
@@ -225,20 +267,16 @@ function renderTrendChart() {
   }
 }
 
-function renderCostChart() {
-  if (!costChartEl.value) return
-
-  if (costChartEl.value.clientWidth === 0 || costChartEl.value.clientHeight === 0) {
-    return
-  }
+function renderTotalChart() {
+  if (!totalChartEl.value) return
+  if (totalChartEl.value.clientWidth === 0 || totalChartEl.value.clientHeight === 0) return
 
   try {
-    if (!costChart) {
-      costChart = echarts.init(costChartEl.value)
+    if (!totalChart) {
+      totalChart = echarts.init(totalChartEl.value)
     }
 
-    // 使用 provider-model 统计数据，按 token 数量分配
-    const modelCosts = modelData.value.map((m) => ({
+    const data = modelData.value.map((m) => ({
       name: `${m.provider_name} - ${m.model_name}`,
       value: m.total_tokens,
     }))
@@ -246,32 +284,88 @@ function renderCostChart() {
     const option: EChartsOption = {
       tooltip: {
         trigger: 'item',
-        formatter: '{b}: {c} tokens ({d}%)',
+        formatter: (params: any) => `${params.name}: ${formatTokens(params.value)} (${params.percent}%)`,
       },
-      legend: {
-        orient: 'vertical',
-        left: 'left',
-      },
-      series: [
-        {
-          name: 'Token 使用',
-          type: 'pie',
-          radius: ['40%', '70%'],
-          data: modelCosts,
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowOffsetX: 0,
-              shadowColor: 'rgba(0, 0, 0, 0.5)',
-            },
-          },
-        },
-      ],
+      series: [{
+        type: 'pie',
+        radius: '70%',
+        data,
+        label: { show: false },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
+      }],
     }
 
-    costChart.setOption(option)
+    totalChart.setOption(option)
   } catch (error) {
-    console.error('Failed to render cost chart:', error)
+    console.error('Failed to render total chart:', error)
+  }
+}
+
+function renderInputChart() {
+  if (!inputChartEl.value) return
+  if (inputChartEl.value.clientWidth === 0 || inputChartEl.value.clientHeight === 0) return
+
+  try {
+    if (!inputChart) {
+      inputChart = echarts.init(inputChartEl.value)
+    }
+
+    const data = modelData.value.map((m) => ({
+      name: `${m.provider_name} - ${m.model_name}`,
+      value: m.input_tokens,
+    }))
+
+    const option: EChartsOption = {
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: any) => `${params.name}: ${formatTokens(params.value)} (${params.percent}%)`,
+      },
+      series: [{
+        type: 'pie',
+        radius: '70%',
+        data,
+        label: { show: false },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
+      }],
+    }
+
+    inputChart.setOption(option)
+  } catch (error) {
+    console.error('Failed to render input chart:', error)
+  }
+}
+
+function renderOutputChart() {
+  if (!outputChartEl.value) return
+  if (outputChartEl.value.clientWidth === 0 || outputChartEl.value.clientHeight === 0) return
+
+  try {
+    if (!outputChart) {
+      outputChart = echarts.init(outputChartEl.value)
+    }
+
+    const data = modelData.value.map((m) => ({
+      name: `${m.provider_name} - ${m.model_name}`,
+      value: m.output_tokens,
+    }))
+
+    const option: EChartsOption = {
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: any) => `${params.name}: ${formatTokens(params.value)} (${params.percent}%)`,
+      },
+      series: [{
+        type: 'pie',
+        radius: '70%',
+        data,
+        label: { show: false },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
+      }],
+    }
+
+    outputChart.setOption(option)
+  } catch (error) {
+    console.error('Failed to render output chart:', error)
   }
 }
 
@@ -288,14 +382,20 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
-  costChart?.dispose()
+  totalChart?.dispose()
+  inputChart?.dispose()
+  outputChart?.dispose()
   trendChart = null
-  costChart = null
+  totalChart = null
+  inputChart = null
+  outputChart = null
 })
 
 function handleResize() {
   trendChart?.resize()
-  costChart?.resize()
+  totalChart?.resize()
+  inputChart?.resize()
+  outputChart?.resize()
 }
 </script>
 
@@ -307,5 +407,10 @@ function handleResize() {
 .chart-container {
   width: 100%;
   height: 400px;
+}
+
+.chart-container-small {
+  width: 100%;
+  height: 300px;
 }
 </style>
