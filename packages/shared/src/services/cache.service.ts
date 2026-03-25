@@ -45,10 +45,10 @@ export interface CachedApiKey {
   user_email: string;
   /** User name */
   user_name: string;
-  /** Company ID */
-  company_id: string;
-  /** Company name */
-  company_name: string;
+  /** Company ID (PRD V2 Phase 1: null, company not used) */
+  company_id: string | null;
+  /** Company name (PRD V2 Phase 1: null, company not used) */
+  company_name: string | null;
   /** Department ID */
   department_id: string | null;
   /** Department name */
@@ -116,7 +116,7 @@ export class CacheService {
    * @param keyHash - SHA-256 hash of the API key
    * @param apiKey - API Key entity to cache
    * @param user - User entity for additional context
-   * @param company - Company entity for additional context
+   * @param company - Company entity for additional context (PRD V2 Phase 1: null)
    * @param department - Department entity (optional)
    * @param ttl - Time-to-live in seconds (default: API_KEY_TTL)
    */
@@ -124,7 +124,7 @@ export class CacheService {
     keyHash: string,
     apiKey: ApiKey,
     user: { id: string; email: string; name: string; role: string },
-    company: { id: string; name: string },
+    company: { id: string; name: string } | null,
     department: { id: string; name: string } | null,
     ttl: number = CACHE_TTL.API_KEY
   ): Promise<void> {
@@ -136,8 +136,8 @@ export class CacheService {
       user_role: user.role,
       user_email: user.email,
       user_name: user.name,
-      company_id: apiKey.company_id,
-      company_name: company.name,
+      company_id: company?.id ?? null,
+      company_name: company?.name ?? null,
       department_id: apiKey.department_id,
       department_name: department?.name ?? null,
       name: apiKey.name,

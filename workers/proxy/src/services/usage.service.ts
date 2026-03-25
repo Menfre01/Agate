@@ -28,8 +28,8 @@ export interface CreateUsageLogParams {
   apiKeyId: string;
   /** User ID */
   userId: string;
-  /** Company ID */
-  companyId: string;
+  /** Company ID (PRD V2 Phase 1: null, company not used) */
+  companyId: string | null;
   /** Department ID (optional) */
   departmentId: string | null;
   /** Provider ID */

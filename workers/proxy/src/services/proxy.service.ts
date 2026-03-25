@@ -130,13 +130,12 @@ export class ProxyService {
     }
 
     // Fetch entities needed for request processing
-    const [apiKey, user, company] = await Promise.all([
+    const [apiKey, user] = await Promise.all([
       queries.getApiKey(this.db, authContext.apiKeyId),
       queries.getUser(this.db, authContext.userId),
-      queries.getCompany(this.db, authContext.companyId),
     ]);
 
-    if (!apiKey || !user || !company) {
+    if (!apiKey || !user) {
       throw new Error("Failed to fetch entities for request processing");
     }
 
@@ -181,7 +180,14 @@ export class ProxyService {
       startTime
     );
 
-    // Process response and extract usage
+    // Process usage based on response type
+    if (result.streaming) {
+      // For streaming: usage will be captured from stream events
+      // Return early with streaming result
+      return result;
+    }
+
+    // For non-streaming: extract usage from response body
     const usage = await this.extractUsage(result.response);
 
     // Deduct quota (Phase 1: only for system user)
@@ -192,7 +198,7 @@ export class ProxyService {
     await this.usageService.recordUsage({
       apiKeyId: apiKey.id,
       userId: user.id,
-      companyId: company.id,
+      companyId: null,  // PRD V2 Phase 1: no company
       departmentId: authContext.departmentId,
       providerId: credential.providerId,
       modelId: model.id,
@@ -306,6 +312,9 @@ export class ProxyService {
   /**
    * Extracts token usage from response.
    *
+   * Validates and clamps token counts to non-negative values.
+   * Some third-party proxies may return negative values.
+   *
    * @param response - Upstream response
    * @returns Token usage
    */
@@ -316,7 +325,21 @@ export class ProxyService {
 
     try {
       const data = await response.json() as { usage?: AnthropicUsage };
-      return data.usage ?? { input_tokens: 0, output_tokens: 0 };
+      const rawUsage = data.usage ?? { input_tokens: 0, output_tokens: 0 };
+
+      // Validate and clamp token counts to non-negative values
+      const inputTokens = Math.max(0, rawUsage.input_tokens);
+      const outputTokens = Math.max(0, rawUsage.output_tokens);
+
+      // Log warning if upstream returned negative tokens
+      if (rawUsage.input_tokens < 0 || rawUsage.output_tokens < 0) {
+        console.warn(
+          `Upstream API returned negative token counts: ` +
+          `input_tokens=${rawUsage.input_tokens}, output_tokens=${rawUsage.output_tokens}. Clamped to 0.`
+        );
+      }
+
+      return { input_tokens: inputTokens, output_tokens: outputTokens };
     } catch {
       // Failed to parse - assume zero usage
       return { input_tokens: 0, output_tokens: 0 };

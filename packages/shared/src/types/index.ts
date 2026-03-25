@@ -320,8 +320,8 @@ export interface UsageLog {
   api_key_id: string;
   /** User ID */
   user_id: string;
-  /** Company ID */
-  company_id: string;
+  /** Company ID (PRD V2 Phase 1: null, company not used) */
+  company_id: string | null;
   /** Department ID */
   department_id: string | null;
   /** Provider ID */
@@ -404,10 +404,10 @@ export interface AuthContext {
   userName: string | null;
   /** User role */
   userRole: UserRole;
-  /** Company ID */
-  companyId: string;
-  /** Company name */
-  companyName: string;
+  /** Company ID (PRD V2 Phase 1: null, company not used) */
+  companyId: string | null;
+  /** Company name (PRD V2 Phase 1: null, company not used) */
+  companyName: string | null;
   /** Department ID (if applicable) */
   departmentId: string | null;
   /** Department name (if applicable) */

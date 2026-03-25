@@ -112,7 +112,7 @@ echo ""
 # Constants
 DB_NAME="agate-db"
 KV_NAME="agate-cache"
-WORKERS=("agate-proxy" "agate-admin" "agate-health")
+WORKERS=("agate-health" "agate-proxy" "agate-admin")
 PAGES_PROJECT="agate-admin"
 
 # Counters
@@ -123,7 +123,7 @@ KV_DELETED=0
 
 # Helper function to check if worker exists
 worker_exists() {
-  npx wrangler deployments list "$1" &>/dev/null
+  npx wrangler deployments list --name="$1" --json &>/dev/null
 }
 
 # Helper function to check if D1 database exists
@@ -133,7 +133,7 @@ d1_exists() {
 
 # Helper function to check if KV namespace exists
 kv_exists() {
-  npx wrangler kv namespace list 2>/dev/null | grep -q "\"title\": \"worker-${1}\""
+  npx wrangler kv namespace list 2>/dev/null | grep -q "\"title\": \"${1}\""
 }
 
 # Helper function to check if Pages project exists
@@ -142,32 +142,10 @@ pages_exists() {
 }
 
 # ============================================
-# Step 1: Delete Workers
+# Step 1: Delete Pages Project
 # ============================================
 echo -e "${CYAN}========================================${NC}"
-echo -e "${CYAN}[1/5] Workers${NC}"
-echo -e "${CYAN}========================================${NC}"
-
-for worker in "${WORKERS[@]}"; do
-  if worker_exists "$worker"; then
-    echo -e "${BLUE}Found: ${worker}${NC}"
-    if npx wrangler delete "$worker"; then
-      echo -e "${GREEN}✓ Deleted: ${worker}${NC}"
-      ((WORKERS_DELETED++))
-    fi
-  else
-    echo -e "${YELLOW}✓ Not found: ${worker}${NC}"
-  fi
-done
-
-echo -e "${GREEN}Workers deleted: ${WORKERS_DELETED}/${#WORKERS[@]}${NC}"
-
-# ============================================
-# Step 2: Delete Pages Project
-# ============================================
-echo ""
-echo -e "${CYAN}========================================${NC}"
-echo -e "${CYAN}[2/5] Pages Project${NC}"
+echo -e "${CYAN}[1/5] Pages Project${NC}"
 echo -e "${CYAN}========================================${NC}"
 
 if pages_exists "$PAGES_PROJECT"; then
@@ -179,6 +157,28 @@ if pages_exists "$PAGES_PROJECT"; then
 else
   echo -e "${YELLOW}✓ Not found: ${PAGES_PROJECT}${NC}"
 fi
+
+# ============================================
+# Step 2: Delete Workers
+# ============================================
+echo ""
+echo -e "${CYAN}========================================${NC}"
+echo -e "${CYAN}[2/5] Workers${NC}"
+echo -e "${CYAN}========================================${NC}"
+
+for worker in "${WORKERS[@]}"; do
+  if worker_exists "$worker"; then
+    echo -e "${BLUE}Found: ${worker}${NC}"
+    if yes | npx wrangler delete "$worker" --force 2>&1; then
+      echo -e "${GREEN}✓ Deleted: ${worker}${NC}"
+      ((WORKERS_DELETED++))
+    fi
+  else
+    echo -e "${YELLOW}✓ Not found: ${worker}${NC}"
+  fi
+done
+
+echo -e "${GREEN}Workers deleted: ${WORKERS_DELETED}/${#WORKERS[@]}${NC}"
 
 # ============================================
 # Step 3: Delete D1 Database
@@ -208,7 +208,7 @@ echo -e "${CYAN}[4/5] KV Namespace${NC}"
 echo -e "${CYAN}========================================${NC}"
 
 if kv_exists "$KV_NAME"; then
-  echo -e "${BLUE}Found: worker-${KV_NAME}${NC}"
+  echo -e "${BLUE}Found: ${KV_NAME}${NC}"
   if npx wrangler kv namespace delete "$KV_NAME"; then
     echo -e "${GREEN}✓ Deleted: ${KV_NAME}${NC}"
     ((KV_DELETED++))

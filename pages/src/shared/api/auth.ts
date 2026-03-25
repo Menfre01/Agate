@@ -2,49 +2,27 @@
  * 认证相关 API
  */
 
-import { adminApi, userApi } from './request'
+import { adminApi } from './request'
 import type { AuthContext } from '@shared/types'
 
 /**
- * 登录 - 验证 API Key 并获取用户信息
+ * 管理员登录 - 验证 API Key 并获取用户信息
  *
- * 根据用户角色自动选择认证端点：
- * - Admin: /admin/auth (Admin Worker)
- * - User: /user/auth (User Worker)
+ * 仅用于管理后台登录，通过 /admin/auth 验证
  */
 export async function login(apiKey: string): Promise<AuthContext> {
-  // 临时存储 API key 用于请求
-  const originalKey = localStorage.getItem('api_key')
+  // 先保存 API key，这样请求拦截器才能使用它
   localStorage.setItem('api_key', apiKey)
 
   try {
-    // 先尝试作为管理员登录 (Admin Worker)
     const response = await adminApi.get<AuthContext>('/admin/auth')
-    if (response.userRole === 'admin') {
-      // 保存 API key
-      localStorage.setItem('api_key', apiKey)
-      localStorage.setItem('user_info', JSON.stringify(response))
-      return response
-    }
-    throw new Error('非管理员账户')
+    // 保存用户信息
+    localStorage.setItem('user_info', JSON.stringify(response))
+    return response
   } catch (error) {
-    // 管理员登录失败，尝试普通用户登录 (User Worker)
-    try {
-      const response = await userApi.get<AuthContext>('/user/auth')
-      // 保存 API key
-      localStorage.setItem('api_key', apiKey)
-      localStorage.setItem('user_info', JSON.stringify(response))
-      return response
-    } catch (userError) {
-      // 清除临时存储的 API key
-      localStorage.removeItem('api_key')
-      throw userError
-    }
-  } finally {
-    // 如果登录失败，恢复原来的 key
-    if (!localStorage.getItem('api_key') && originalKey) {
-      localStorage.setItem('api_key', originalKey)
-    }
+    // 请求失败，清除已保存的 API key
+    localStorage.removeItem('api_key')
+    throw error
   }
 }
 

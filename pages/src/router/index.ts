@@ -7,34 +7,19 @@ import type { RouteRecordRaw } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
 const routes: RouteRecordRaw[] = [
-  // 登录页
+  // 登录页（管理员专用）
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/pages/login/index.vue'),
     meta: { requiresAuth: false },
   },
-  // 用户页面
+  // 公开统计页面（不需要登录，通过 URL 参数传入 API Key）
   {
-    path: '/user',
-    name: 'UserLayout',
-    component: () => import('@/layouts/UserLayout.vue'),
-    meta: { requiresAuth: true, role: 'user' },
-    redirect: '/user/profile',
-    children: [
-      {
-        path: 'profile',
-        name: 'UserProfile',
-        component: () => import('@/views/user/profile/index.vue'),
-        meta: { title: '个人信息' },
-      },
-      {
-        path: 'stats',
-        name: 'UserStats',
-        component: () => import('@/views/user/stats/index.vue'),
-        meta: { title: '用量统计' },
-      },
-    ],
+    path: '/stats',
+    name: 'PublicStats',
+    component: () => import('@/pages/public-stats/index.vue'),
+    meta: { requiresAuth: false, publicPage: true },
   },
   // 管理员页面
   {
@@ -99,7 +84,8 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     redirect: () => {
       const userStore = useUserStore()
-      return userStore.isAdmin ? '/admin' : '/user'
+      // 已登录管理员跳转到仪表盘，其他情况跳转到登录页
+      return userStore.isAdmin ? '/admin/dashboard' : '/login'
     },
   },
   // 404
@@ -119,7 +105,7 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
 
-  // 需要认证的页面
+  // 需要认证的页面（管理后台）
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
     return
@@ -127,14 +113,13 @@ router.beforeEach((to, from, next) => {
 
   // 需要管理员权限的页面
   if (to.meta.role === 'admin' && !userStore.isAdmin) {
-    next({ name: 'UserProfile' })
+    next({ name: 'Login' })
     return
   }
 
-  // 已登录用户访问登录页
-  if (to.name === 'Login' && userStore.isLoggedIn) {
-    // PRD V2 第一期：管理员跳转到用户管理，普通用户跳转到个人信息
-    next(userStore.isAdmin ? { name: 'Users' } : { name: 'UserProfile' })
+  // 已登录管理员访问登录页
+  if (to.name === 'Login' && userStore.isLoggedIn && userStore.isAdmin) {
+    next({ name: 'Dashboard' })
     return
   }
 

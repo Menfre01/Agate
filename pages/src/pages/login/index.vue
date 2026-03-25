@@ -3,16 +3,22 @@
     <div class="login-box">
       <div class="logo-section">
         <h1>Agate</h1>
-        <p>AI Gateway 管理后台</p>
+        <p>管理后台登录</p>
       </div>
 
+      <n-alert type="info" :show-icon="false" style="margin-bottom: 24px;">
+        <template #header>
+          <span style="font-size: 13px;">普通用户请访问 <a href="/stats">/stats</a> 查看用量统计</span>
+        </template>
+      </n-alert>
+
       <n-form ref="formRef" :model="formData" :rules="rules" size="large">
-        <n-form-item path="apiKey" label="API Key">
+        <n-form-item path="apiKey" label="管理员 API Key">
           <n-input
             v-model:value="formData.apiKey"
             type="password"
             show-password-on="click"
-            placeholder="请输入您的 API Key"
+            placeholder="请输入管理员 API Key"
             @keyup.enter="handleLogin"
           />
         </n-form-item>
@@ -24,14 +30,10 @@
             :loading="loading"
             @click="handleLogin"
           >
-            登录
+            登录管理后台
           </n-button>
         </n-form-item>
       </n-form>
-
-      <div class="tips">
-        <p>使用您的 API Key 登录管理后台</p>
-      </div>
     </div>
   </div>
 </template>
@@ -39,7 +41,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
+import { NForm, NFormItem, NInput, NButton, NAlert, useMessage } from 'naive-ui'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -71,17 +73,18 @@ async function handleLogin() {
   loading.value = true
   try {
     const userInfo = await userStore.login(formData.apiKey)
+
+    // 验证是否为管理员
+    if (userInfo.userRole !== 'admin') {
+      message.error('此 API Key 不是管理员权限，普通用户请访问 /stats 查看用量统计')
+      return
+    }
+
     message.success(`欢迎回来，${userInfo.userName || userInfo.userEmail}！`)
 
-    // 重定向到原页面或默认页面
+    // 跳转到管理后台
     const redirect = route.query.redirect as string
-    if (redirect) {
-      router.push(redirect)
-    } else if (userInfo.userRole === 'admin') {
-      router.push('/admin')
-    } else {
-      router.push('/user')
-    }
+    await router.push(redirect || '/admin/dashboard')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '登录失败，请检查 API Key')
   } finally {
@@ -124,13 +127,12 @@ async function handleLogin() {
   color: #666;
 }
 
-.tips {
-  margin-top: 24px;
-  text-align: center;
+a {
+  color: #18a058;
+  text-decoration: none;
 }
 
-.tips p {
-  font-size: 13px;
-  color: #999;
+a:hover {
+  text-decoration: underline;
 }
 </style>

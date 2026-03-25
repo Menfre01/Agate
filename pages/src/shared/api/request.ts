@@ -51,10 +51,14 @@ function setupInterceptors(instance: AxiosInstance) {
 
       // 处理 401 未授权错误
       if (response?.status === 401) {
-        localStorage.removeItem('api_key')
-        localStorage.removeItem('user_info')
-        messageApi?.error('登录已过期，请重新登录')
-        window.location.href = '/login'
+        // 如果已经在登录页面，不需要显示错误和重定向
+        const isLoginPage = window.location.pathname === '/login'
+        if (!isLoginPage) {
+          localStorage.removeItem('api_key')
+          localStorage.removeItem('user_info')
+          messageApi?.error('登录已过期，请重新登录')
+          window.location.href = '/login'
+        }
         return Promise.reject(error)
       }
 
@@ -86,15 +90,6 @@ const adminInstance: AxiosInstance = axios.create({
   timeout: 30000,
 })
 setupInterceptors(adminInstance)
-
-/**
- * User API 实例 - 指向 User Worker
- */
-const userInstance: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_USER_WORKER_URL || 'http://localhost:8788',
-  timeout: 30000,
-})
-setupInterceptors(userInstance)
 
 /**
  * 默认请求实例（向后兼容）
@@ -155,16 +150,6 @@ export const adminApi = {
   post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => adminInstance.post<T, T>(url, data, config),
   put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => adminInstance.put<T, T>(url, data, config),
   delete: <T = unknown>(url: string, config?: AxiosRequestConfig) => adminInstance.delete<T, T>(url, config),
-}
-
-/**
- * User API 专用方法
- */
-export const userApi = {
-  get: <T = unknown>(url: string, config?: AxiosRequestConfig) => userInstance.get<T, T>(url, config),
-  post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => userInstance.post<T, T>(url, data, config),
-  put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => userInstance.put<T, T>(url, data, config),
-  delete: <T = unknown>(url: string, config?: AxiosRequestConfig) => userInstance.delete<T, T>(url, config),
 }
 
 export default request

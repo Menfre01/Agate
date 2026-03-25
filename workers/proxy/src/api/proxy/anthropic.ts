@@ -78,21 +78,10 @@ function handleStreamingResponse(
   result: { response: Response; stream: ReadableStream; requestId: string },
   context: RequestContext
 ): Response {
-  const { response, stream } = result;
+  const { response } = result;
 
-  // Create a transform stream to capture usage from message_delta events
-  const transformStream = new TransformStream({
-    transform(chunk, controller) {
-      // Forward the chunk as-is
-      controller.enqueue(chunk);
-    },
-  });
-
-  // Pipe the stream through the transformer
-  const transformedStream = stream.pipeThrough(transformStream);
-
-  // Create new response with transformed stream
-  const streamingResponse = new Response(transformedStream, {
+  // Create new response with the original body (avoid pipeThrough which can lock the stream)
+  const streamingResponse = new Response(response.body, {
     headers: response.headers,
     status: response.status,
   });

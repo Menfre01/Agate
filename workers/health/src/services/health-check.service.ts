@@ -172,6 +172,13 @@ export class HealthCheckService {
 
     // 4. Check each credential
     for (const cred of credentials) {
+      // Skip if no active model available for this provider
+      if (!cred.health_check_model_id || !cred.health_check_model_name) {
+        console.warn(`Skipping credential ${cred.id} (provider ${cred.provider_id}): no active model available`);
+        summary.skipped++;
+        continue;
+      }
+
       // Check quota before each check
       const currentQuota = await this.checkSystemUserQuota();
       if (!currentQuota.canProceed) {
@@ -180,7 +187,12 @@ export class HealthCheckService {
         break;
       }
 
-      const result = await this.checkCredential(cred, systemApiKey);
+      // After null check, we know these fields are non-null
+      const result = await this.checkCredential({
+        ...cred,
+        health_check_model_id: cred.health_check_model_id,
+        health_check_model_name: cred.health_check_model_name,
+      }, systemApiKey);
       summary.results.push(result);
 
       if (result.success) {
@@ -219,9 +231,9 @@ export class HealthCheckService {
       base_url: string | null;
       provider_name: string;
       provider_base_url: string;
-      /** Internal model ID for health check */
+      /** Internal model ID for health check (guaranteed non-null after pre-check) */
       health_check_model_id: string;
-      /** Upstream model name for health check */
+      /** Upstream model name for health check (guaranteed non-null after pre-check) */
       health_check_model_name: string;
     },
     systemApiKey: string
@@ -273,8 +285,20 @@ export class HealthCheckService {
       if (response.ok) {
         const data = (await response.json()) as AnthropicResponse;
         result.success = true;
-        result.inputTokens = data.usage?.input_tokens ?? 0;
-        result.outputTokens = data.usage?.output_tokens ?? 0;
+        // Validate and clamp token counts to non-negative values
+        // Some third-party proxies may return negative values
+        const rawInputTokens = data.usage?.input_tokens ?? 0;
+        const rawOutputTokens = data.usage?.output_tokens ?? 0;
+        result.inputTokens = Math.max(0, rawInputTokens);
+        result.outputTokens = Math.max(0, rawOutputTokens);
+
+        // Log warning if upstream returned negative tokens
+        if (rawInputTokens < 0 || rawOutputTokens < 0) {
+          console.warn(
+            `Upstream API returned negative token counts for credential ${credential.id}: ` +
+            `input_tokens=${rawInputTokens}, output_tokens=${rawOutputTokens}. Clamped to 0.`
+          );
+        }
 
         // Record usage log with actual model used
         await this.recordUsage(systemApiKey, {

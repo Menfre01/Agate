@@ -90,31 +90,29 @@ export class AuthService {
       throw new UnauthorizedError("API key has expired");
     }
 
-    // Build full auth context with user and company info
+    // Build full auth context with user info
     const authContext = await this.buildAuthContext(keyData);
 
-    // Cache the validated key with user/company info
-    // PRD V2 Phase 1: Use user's company_id if api_keys.company_id is null
+    // Cache the validated key with user info
+    // PRD V2 Phase 1: Simplified user system, no company required
     const user = await queries.getUser(this.db, keyData.user_id);
     if (!user) {
       throw new UnauthorizedError("User not found");
     }
-    const companyId = keyData.company_id ?? user.company_id;
 
-    const [company, department] = await Promise.all([
-      queries.getCompany(this.db, companyId),
-      keyData.department_id ? queries.getDepartment(this.db, keyData.department_id) : Promise.resolve(null),
-    ]);
-
-    if (user && company) {
-      await this.cache.setApiKey(
-        keyHash,
-        keyData,
-        { id: user.id, email: user.email, name: user.name ?? "", role: user.role },
-        { id: company.id, name: company.name },
-        department ? { id: department.id, name: department.name } : null
-      );
+    // Fetch department if applicable
+    let department: Department | null = null;
+    if (keyData.department_id) {
+      department = await queries.getDepartment(this.db, keyData.department_id);
     }
+
+    await this.cache.setApiKey(
+      keyHash,
+      keyData,
+      { id: user.id, email: user.email, name: user.name ?? "", role: user.role },
+      null,  // PRD V2 Phase 1: no company
+      department ? { id: department.id, name: department.name } : null
+    );
 
     return authContext;
   }
@@ -158,8 +156,8 @@ export class AuthService {
     user_role: string;
     user_email: string;
     user_name: string;
-    company_id: string;
-    company_name: string;
+    company_id: string | null;
+    company_name: string | null;
     department_id: string | null;
     department_name: string | null;
     quota_daily: number;
@@ -193,6 +191,8 @@ export class AuthService {
   /**
    * Builds complete AuthContext with user and organization info.
    *
+   * PRD V2 Phase 1: Company is not used, companyId/companyName are null.
+   *
    * @param keyData - API Key entity from database
    * @returns Complete authentication context
    */
@@ -204,17 +204,10 @@ export class AuthService {
       throw new UnauthorizedError("User not found");
     }
 
-    // PRD V2 Phase 1: company_id is nullable in api_keys
-    // Fall back to user's company_id if api_keys.company_id is null
-    const companyId = keyData.company_id ?? user.company_id;
-    if (!companyId) {
-      throw new UnauthorizedError("Company not found");
-    }
-
-    const company = await queries.getCompany(this.db, companyId);
-    if (!company) {
-      throw new UnauthorizedError("Company not found");
-    }
+    // PRD V2 Phase 1: Simplified user system, no company association
+    // companyId and companyName are null in Phase 1
+    const companyId = null;
+    const companyName = null;
 
     // Fetch department if applicable
     let department: Department | null = null;
@@ -228,8 +221,8 @@ export class AuthService {
       userEmail: user.email,
       userName: user.name,
       userRole: user.role as "admin" | "user",
-      companyId: company.id,
-      companyName: company.name,
+      companyId,
+      companyName,
       departmentId: keyData.department_id,
       departmentName: department?.name ?? null,
       quotaDaily: keyData.quota_daily,

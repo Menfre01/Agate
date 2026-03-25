@@ -35,7 +35,9 @@
                 {{ userStore.userName ? userStore.userName.charAt(0).toUpperCase() : '?' }}
               </n-avatar>
               <span class="user-name">{{ userStore.userName || '未知用户' }}</span>
-              <n-tag size="small" type="info">管理员</n-tag>
+              <n-tag size="small" :type="userStore.isAdmin ? 'info' : 'warning'">
+                {{ userStore.userInfo?.userRole || '未知角色' }}
+              </n-tag>
             </div>
           </n-dropdown>
         </div>

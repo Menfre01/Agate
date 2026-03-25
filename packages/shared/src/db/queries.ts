@@ -148,7 +148,7 @@ export interface InternalCreateUsageLogDto {
   id: string;
   api_key_id: string;
   user_id: string;
-  company_id: string;
+  company_id: string | null;
   department_id: string | null;
   provider_id: string;
   model_id: string;
@@ -2061,7 +2061,7 @@ export const getModelProvider = (db: D1Database, modelId: string, providerId: st
   getQueries(db).getModelProvider(modelId, providerId);
 export const addModelProvider = (
   db: D1Database,
-  data: { id: string; model_id: string; provider_id: string; input_price: number; output_price: number }
+  data: { id: string; model_id: string; provider_id: string; actual_model_id?: string | null; input_price: number; output_price: number }
 ) => getQueries(db).addModelProvider(data);
 export const updateModelProvider = (
   db: D1Database,
@@ -2740,10 +2740,10 @@ export const getAllActiveCredentials = async (db: D1Database): Promise<Array<{
   health_status: string;
   provider_name: string;
   provider_base_url: string;
-  /** Internal model ID (cheapest active model for this provider) */
-  health_check_model_id: string;
-  /** Upstream model name (cheapest active model for this provider) */
-  health_check_model_name: string;
+  /** Internal model ID (cheapest active model for this provider), null if no active models */
+  health_check_model_id: string | null;
+  /** Upstream model name (cheapest active model for this provider), null if no active models */
+  health_check_model_name: string | null;
 }>> => {
   const result = await db.prepare(`
     SELECT
