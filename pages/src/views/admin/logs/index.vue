@@ -152,7 +152,7 @@ const columns: DataTableColumns<any> = [
     title: 'Token',
     key: 'tokens',
     width: 120,
-    render: (row) => `${row.total_tokens.toLocaleString()} (${row.input_tokens.toLocaleString()}+${row.output_tokens.toLocaleString()})`,
+    render: (row) => `${formatTokens(row.total_tokens)} (${formatTokens(row.input_tokens)}+${formatTokens(row.output_tokens)})`,
   },
   {
     title: '状态',
@@ -213,6 +213,13 @@ function handleCompanyChange() {
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleString('zh-CN')
+}
+
+// 格式化 token 数值，超过 1000 使用 k 单位
+function formatTokens(value: number): string {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
+  return value.toString()
 }
 
 async function loadOptions() {

@@ -30,21 +30,21 @@
         </n-grid-item>
         <n-grid-item>
           <n-card>
-            <n-statistic label="总 Token 数" :value="usageData.total_tokens || 0">
+            <n-statistic label="总 Token 数" :value="formatTokens(usageData.total_tokens || 0)">
               <template #suffix>tokens</template>
             </n-statistic>
           </n-card>
         </n-grid-item>
         <n-grid-item>
           <n-card>
-            <n-statistic label="输入 Token" :value="usageData.input_tokens || 0">
+            <n-statistic label="输入 Token" :value="formatTokens(usageData.input_tokens || 0)">
               <template #suffix>tokens</template>
             </n-statistic>
           </n-card>
         </n-grid-item>
         <n-grid-item>
           <n-card>
-            <n-statistic label="输出 Token" :value="usageData.total_output_tokens || 0">
+            <n-statistic label="输出 Token" :value="formatTokens(usageData.total_output_tokens || 0)">
               <template #suffix>tokens</template>
             </n-statistic>
           </n-card>
@@ -105,6 +105,13 @@ const successRate = computed(() => {
   if (usageData.value.total_requests === 0) return 0
   return ((usageData.value.successful_requests / usageData.value.total_requests) * 100).toFixed(2)
 })
+
+// 格式化 token 数值，超过 1000 使用 k 单位
+function formatTokens(value: number): string {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
+  return value.toString()
+}
 
 // 图表 ref
 const trendChartEl = ref<HTMLElement | null>(null)
