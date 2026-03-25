@@ -200,8 +200,24 @@ export function getRateLimitHeaders(context: RequestContext): Record<string, str
  * @returns Response with rate limit headers
  */
 export function withRateLimitHeaders(response: Response, context: RequestContext): Response {
+  // Check if rate limit headers are already present (e.g., from streaming handlers)
+  if (response.headers.has("RateLimit-Limit")) {
+    return response;
+  }
+
   const headers = getRateLimitHeaders(context);
   if (headers) {
+    // Check if the response body is a locked/disturbed stream
+    // If so, just add headers to the existing response without creating a new one
+    const body = response.body;
+    if (body && body.locked) {
+      // Stream is locked, can't create new Response - just add headers
+      Object.entries(headers).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+      return response;
+    }
+
     const newResponse = new Response(response.body, response);
     Object.entries(headers).forEach(([key, value]) => {
       newResponse.headers.set(key, value);
