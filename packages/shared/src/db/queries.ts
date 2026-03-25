@@ -2494,7 +2494,7 @@ export const getTokenUsageSummary = async (db: D1Database, options: {
   department_id?: string;
   user_id?: string;
 }): Promise<any> => {
-  const conditions: string[] = [];
+  const conditions: string[] = ["status = 'success'"];
   const params: any[] = [];
   let paramIndex = 1;
 
@@ -2519,7 +2519,7 @@ export const getTokenUsageSummary = async (db: D1Database, options: {
     params.push(options.end_at);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
   const result = await db.prepare(
     `SELECT SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens FROM usage_logs ${whereClause}`
   ).bind(...params).first();
@@ -2532,7 +2532,7 @@ export const getTokenUsageByModel = async (db: D1Database, options: {
   department_id?: string;
   user_id?: string;
 }): Promise<any[]> => {
-  const conditions: string[] = [];
+  const conditions: string[] = ["status = 'success'"];
   const params: any[] = [];
   let paramIndex = 1;
 
@@ -2557,7 +2557,7 @@ export const getTokenUsageByModel = async (db: D1Database, options: {
     params.push(options.end_at);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
   const result = await db.prepare(
     `SELECT model_id, model_name, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(total_tokens) as total_tokens, COUNT(*) as request_count FROM usage_logs ${whereClause} GROUP BY model_id, model_name ORDER BY total_tokens DESC`
   ).bind(...params).all();
