@@ -28,12 +28,14 @@ import { getRateLimitHeaders } from "@agate/shared/middleware/ratelimit.js";
  * @param request - Incoming request
  * @param env - Cloudflare Workers environment
  * @param context - Request context
+ * @param ctx - Execution context for waitUntil()
  * @returns Response from upstream or error response
  */
 export async function handleMessages(
   request: Request,
   env: Env,
-  context: RequestContext
+  context: RequestContext,
+  ctx: ExecutionContext
 ): Promise<Response> {
   try {
     // Validate authentication
@@ -60,7 +62,7 @@ export async function handleMessages(
 
     // For streaming responses, we need to handle the stream
     if (result.streaming) {
-      return handleStreamingResponse(result, context, env);
+      return handleStreamingResponse(result, context, env, ctx);
     }
 
     // For non-streaming: The response has been recreated in ProxyService with a fresh body
@@ -113,6 +115,7 @@ export async function handleMessages(
  * @param result - Streaming proxy result
  * @param context - Request context
  * @param env - Cloudflare Workers environment
+ * @param ctx - Execution context for waitUntil()
  * @returns Streaming response
  */
 function handleStreamingResponse(
@@ -132,7 +135,8 @@ function handleStreamingResponse(
     };
   },
   context: RequestContext,
-  env: Env
+  env: Env,
+  ctx: ExecutionContext
 ): Response {
   const { response, requestId, usageContext, stream } = result;
 
@@ -202,17 +206,24 @@ function handleStreamingResponse(
   // by creating independent branches for any potential consumption
   const [parseBranch, clientBranch] = stream.tee();
 
-  // Start parsing asynchronously if usage context is available (don't block the response)
+  // Parse stream asynchronously and use waitUntil() to ensure completion
+  // CRITICAL: In Cloudflare Workers, async tasks started after returning Response
+  // may be cancelled. Using waitUntil() ensures the task completes even after
+  // the response is sent to the client.
   if (usageContext) {
-    parseStreamForUsage(parseBranch, requestId, usageContext, env).catch((err) => {
-      console.error(`[${requestId}] Failed to parse stream for usage: ${err}`);
-    });
+    ctx.waitUntil(
+      parseStreamForUsage(parseBranch, requestId, usageContext, env).catch((err) => {
+        console.error(`[${requestId}] Failed to parse stream for usage: ${err}`);
+      })
+    );
   } else {
     // No usage context - still need to consume the parse branch to avoid hanging
     // The client branch will be read by the client, but the parse branch must also be consumed
-    consumeStreamQuietly(parseBranch, requestId).catch((err) => {
-      console.error(`[${requestId}] Failed to consume parse branch: ${err}`);
-    });
+    ctx.waitUntil(
+      consumeStreamQuietly(parseBranch, requestId).catch((err) => {
+        console.error(`[${requestId}] Failed to consume parse branch: ${err}`);
+      })
+    );
   }
 
   // Build response headers with CORS and rate limit
@@ -365,7 +376,13 @@ async function parseStreamForUsage(
           // Contains input_tokens (always sent early in stream)
           // Format: { type: "message_start", message: { id, type, role, content, usage: { input_tokens } } }
           if (data.message?.usage?.input_tokens !== undefined) {
-            inputTokens = data.message.usage.input_tokens;
+            const rawInputTokens = data.message.usage.input_tokens;
+            console.log(`[${requestId}] Raw input_tokens from message_start: ${rawInputTokens} (${typeof rawInputTokens})`);
+            // Clamp to non-negative
+            inputTokens = Math.max(0, rawInputTokens);
+            if (rawInputTokens < 0) {
+              console.warn(`[${requestId}] Negative input_tokens clamped from ${rawInputTokens} to ${inputTokens}`);
+            }
             console.log(`[${requestId}] Captured input_tokens from message_start: ${inputTokens}`);
           } else {
             // Log warning if input_tokens is missing from message_start
@@ -402,7 +419,13 @@ async function parseStreamForUsage(
           // Final accurate output token count (sent at end of stream)
           // Format: { type: "message_delta", delta: { stop_reason: "end_turn"|"max_tokens"|"stop_sequence" }, usage: { output_tokens } }
           if (data.usage?.output_tokens !== undefined) {
-            outputTokens = data.usage.output_tokens;
+            const rawOutputTokens = data.usage.output_tokens;
+            console.log(`[${requestId}] Raw output_tokens from message_delta: ${rawOutputTokens} (${typeof rawOutputTokens})`);
+            // Clamp to non-negative
+            outputTokens = Math.max(0, rawOutputTokens);
+            if (rawOutputTokens < 0) {
+              console.warn(`[${requestId}] Negative output_tokens clamped from ${rawOutputTokens} to ${outputTokens}`);
+            }
             console.log(`[${requestId}] Captured output_tokens from message_delta: ${outputTokens}`);
           }
           break;
@@ -592,17 +615,19 @@ function handleMessagesError(error: unknown, context: RequestContext, env?: Env)
  * @param request - Incoming request
  * @param env - Cloudflare Workers environment
  * @param context - Request context
+ * @param ctx - Execution context for waitUntil()
  * @returns Response or null if route doesn't match
  */
 export function messagesRouteHandler(
   request: Request,
   env: Env,
-  context: RequestContext
+  context: RequestContext,
+  ctx: ExecutionContext
 ): Promise<Response> | null {
   const url = new URL(request.url);
 
   if (url.pathname === "/v1/messages" && request.method === "POST") {
-    return handleMessages(request, env, context);
+    return handleMessages(request, env, context, ctx);
   }
 
   return null;

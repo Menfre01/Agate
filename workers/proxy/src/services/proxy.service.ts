@@ -220,8 +220,9 @@ export class ProxyService {
       };
     }
 
-    // For non-streaming: extract usage from response body
-    const usage = await this.extractUsage(result.response);
+    // For non-streaming: usage is already extracted in executeRequest
+    // The response was recreated with fresh body, so usage is available in result.usage
+    const usage = result.usage;
 
     // Deduct quota (Phase 1: only for system user)
     const actualTokens = usage.input_tokens + usage.output_tokens;
@@ -269,7 +270,49 @@ export class ProxyService {
     const response = await fetch(url, request);
     const responseTimeMs = Date.now() - startTime;
 
-    // Check if streaming
+    // Check for upstream error status codes
+    // For both streaming and non-streaming, we need to handle errors properly
+    if (response.status < 200 || response.status >= 400) {
+      console.error(`[executeRequest] Upstream returned error status: ${response.status} ${response.statusText}`);
+
+      // Check if streaming response (even errors may have content-type: text/event-stream)
+      const isStreaming = this.isStreamingResponse(response);
+
+      if (isStreaming) {
+        // For streaming error responses, still return streaming result
+        // The error will be handled in handleStreamingResponse
+        return {
+          response,
+          usage: { input_tokens: 0, output_tokens: 0 },
+          requestId,
+          responseTimeMs,
+          streaming: true,
+          stream: response.body!,
+        };
+      }
+
+      // For non-streaming error responses, extract error body and recreate response
+      const errorText = await response.text();
+      console.error(`[executeRequest] Error response body: ${errorText.substring(0, 200)}`);
+
+      // Recreate response with error body
+      const headers = new Headers(response.headers);
+      headers.set("Content-Type", "application/json");
+
+      return {
+        response: new Response(errorText, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        }),
+        usage: { input_tokens: 0, output_tokens: 0 },
+        requestId,
+        responseTimeMs,
+        streaming: false,
+      };
+    }
+
+    // Check if streaming (only for successful responses)
     const isStreaming = this.isStreamingResponse(response);
 
     if (isStreaming) {
@@ -406,9 +449,30 @@ export class ProxyService {
       return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
     }
 
+    // Check if response is successful before parsing
+    if (!response.ok) {
+      console.error(`[extractUsageWithBody] Upstream returned error status: ${response.status} ${response.statusText}`);
+      // For error responses, return the response text as data for error handling
+      const errorText = await response.text();
+      console.error(`[extractUsageWithBody] Error response body: ${errorText.substring(0, 200)}`);
+      return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
+    }
+
+    // Check content type before parsing JSON
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      console.warn(`[extractUsageWithBody] Unexpected content-type: ${contentType}`);
+      const text = await response.text();
+      console.warn(`[extractUsageWithBody] Response body (first 200 chars): ${text.substring(0, 200)}`);
+      return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
+    }
+
     try {
       const data = await response.json() as { usage?: AnthropicUsage };
       const rawUsage = data.usage ?? { input_tokens: 0, output_tokens: 0 };
+
+      // Debug: log raw usage values
+      console.log(`[extractUsageWithBody] Raw usage: input_tokens=${rawUsage.input_tokens} (${typeof rawUsage.input_tokens}), output_tokens=${rawUsage.output_tokens} (${typeof rawUsage.output_tokens})`);
 
       // Validate and clamp token counts to non-negative values
       const inputTokens = Math.max(0, rawUsage.input_tokens);
@@ -426,8 +490,9 @@ export class ProxyService {
         usage: { input_tokens: inputTokens, output_tokens: outputTokens },
         data
       };
-    } catch {
+    } catch (err) {
       // Failed to parse - assume zero usage and null data
+      console.error(`[extractUsageWithBody] Failed to parse response: ${err}`);
       return { usage: { input_tokens: 0, output_tokens: 0 }, data: null };
     }
   }

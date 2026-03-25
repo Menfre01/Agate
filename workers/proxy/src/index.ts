@@ -84,7 +84,7 @@ function withCorsHeaders(response: Response): Response {
  * Main request handler for Proxy Worker.
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Create request context
     const context = createRequestContext(request);
 
@@ -117,7 +117,7 @@ export default {
       await rateLimitMiddleware(context, env);
 
       // Proxy API routes
-      let response = await messagesRouteHandler(request, env, context);
+      let response = await messagesRouteHandler(request, env, context, ctx);
       if (response) return withCorsHeaders(withRateLimitHeaders(response, context));
 
       response = await modelsRouteHandler(request, env, context);
