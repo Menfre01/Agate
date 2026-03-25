@@ -110,6 +110,31 @@ pnpm dev:logs     # 查看日志
 
 ### 生产部署规范
 
+#### 部署前必须确认当前路径
+
+执行任何部署操作前，**必须**通过 `pwd` 确认当前位于项目根目录 `/Users/menfre/Workbench/agate`。
+
+**正确方式**：
+```bash
+# 1. 确认当前路径
+pwd
+# 输出应为: /Users/menfre/Workbench/agate
+
+# 2. 如果不在根目录，先切换
+cd /Users/menfre/Workbench/agate
+
+# 3. 再执行部署
+./scripts/quick-deploy.sh --account-id=xxx
+```
+
+**禁止操作**：
+- ❌ 在 `workers/proxy`、`workers/admin` 等子目录下执行部署命令
+- ❌ 未确认 `pwd` 输出就直接执行部署
+
+**原因**：
+- wrangler 会相对当前路径查找配置文件
+- 子目录下执行会导致路径错误（如 `workers/proxy/workers/proxy/wrangler.jsonc`）
+
 #### 统一部署脚本
 
 部署到生产环境**必须**使用 `scripts/quick-deploy.sh` 脚本，并使用指定的 Cloudflare 账号。

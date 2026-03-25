@@ -500,9 +500,6 @@ export class ProxyService {
       const data = await response.json() as { usage?: AnthropicUsage };
       const rawUsage = data.usage ?? { input_tokens: 0, output_tokens: 0 };
 
-      // Debug: log raw usage values
-      console.log(`[extractUsageWithBody] Raw usage: input_tokens=${rawUsage.input_tokens} (${typeof rawUsage.input_tokens}), output_tokens=${rawUsage.output_tokens} (${typeof rawUsage.output_tokens})`);
-
       // Validate and clamp token counts to non-negative values
       const inputTokens = Math.max(0, rawUsage.input_tokens);
       const outputTokens = Math.max(0, rawUsage.output_tokens);

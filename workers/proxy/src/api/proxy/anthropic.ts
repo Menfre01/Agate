@@ -307,13 +307,6 @@ async function parseStreamForUsage(
 
     const responseTimeMs = Date.now() - usageContext.startTime;
 
-    // Log final token counts for debugging
-    console.log(
-      `[${requestId}] Recording usage - status: ${status}, ` +
-      `input_tokens: ${inputTokens}, output_tokens: ${finalOutputTokens}, ` +
-      `events_received: ${eventCount}`
-    );
-
     // Log warning if tokens appear incomplete
     if (status === "success" && inputTokens === 0 && finalOutputTokens === 0) {
       console.warn(`[${requestId}] Stream completed but no tokens were captured`);
@@ -335,16 +328,8 @@ async function parseStreamForUsage(
 
     // Record usage log - MUST AWAIT to ensure write completes before function returns
     const usageService = new UsageService(env);
-    console.log(`[${requestId}] About to call usageService.recordUsage with:`, {
-      apiKeyId: usageContext.apiKeyId,
-      userId: usageContext.userId,
-      modelId: usageContext.modelId,
-      modelName: usageContext.modelName,
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
-    });
     try {
-      const logId = await usageService.recordUsage({
+      await usageService.recordUsage({
         apiKeyId: usageContext.apiKeyId,
         userId: usageContext.userId,
         companyId: null,
@@ -360,7 +345,6 @@ async function parseStreamForUsage(
         requestId,
         responseTimeMs,
       });
-      console.log(`[${requestId}] Successfully recorded usage log with ID: ${logId}`);
     } catch (err) {
       console.error(`[${requestId}] Failed to record streaming usage: ${err}`);
     }
@@ -373,21 +357,11 @@ async function parseStreamForUsage(
     }
   };
 
-  // Event counter for debugging (log first few events)
-  let eventCount = 0;
-  const MAX_EVENT_LOGS = 3;
-
   // Parse SSE data line and extract token information
   const parseSSEData = (dataLine: string) => {
     // Remove "data:" prefix and trim
     const jsonStr = dataLine.slice(5).trim();
     if (!jsonStr || jsonStr === "[DONE]") return;
-
-    // Log first few events for debugging
-    if (eventCount < MAX_EVENT_LOGS) {
-      console.log(`[${requestId}] SSE event #${eventCount + 1}: ${jsonStr.substring(0, 500)}`);
-      eventCount++;
-    }
 
     try {
       const data = JSON.parse(jsonStr);
@@ -398,13 +372,11 @@ async function parseStreamForUsage(
           // Format: { type: "message_start", message: { id, type, role, content, usage: { input_tokens } } }
           if (data.message?.usage?.input_tokens !== undefined) {
             const rawInputTokens = data.message.usage.input_tokens;
-            console.log(`[${requestId}] Raw input_tokens from message_start: ${rawInputTokens} (${typeof rawInputTokens})`);
             // Clamp to non-negative
             inputTokens = Math.max(0, rawInputTokens);
             if (rawInputTokens < 0) {
               console.warn(`[${requestId}] Negative input_tokens clamped from ${rawInputTokens} to ${inputTokens}`);
             }
-            console.log(`[${requestId}] Captured input_tokens from message_start: ${inputTokens}`);
           } else {
             // Log warning if input_tokens is missing from message_start
             console.warn(
@@ -441,20 +413,17 @@ async function parseStreamForUsage(
           // Format: { type: "message_delta", delta: { stop_reason: "end_turn"|"max_tokens"|"stop_sequence" }, usage: { output_tokens } }
           if (data.usage?.output_tokens !== undefined) {
             const rawOutputTokens = data.usage.output_tokens;
-            console.log(`[${requestId}] Raw output_tokens from message_delta: ${rawOutputTokens} (${typeof rawOutputTokens})`);
             // Clamp to non-negative
             outputTokens = Math.max(0, rawOutputTokens);
             if (rawOutputTokens < 0) {
               console.warn(`[${requestId}] Negative output_tokens clamped from ${rawOutputTokens} to ${outputTokens}`);
             }
-            console.log(`[${requestId}] Captured output_tokens from message_delta: ${outputTokens}`);
           }
           break;
 
         case 'message_stop':
           // Stream completed normally
           // Format: { type: "message_stop" }
-          console.log(`[${requestId}] Received message_stop, stream completed`);
           break;
 
         case 'content_block_start':
@@ -475,8 +444,6 @@ async function parseStreamForUsage(
           break;
 
         default:
-          // Log unknown event types for debugging
-          console.log(`[${requestId}] Unknown SSE event type: ${data.type}`);
           break;
       }
     } catch (parseErr) {
