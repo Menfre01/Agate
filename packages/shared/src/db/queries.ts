@@ -1818,12 +1818,9 @@ export class Queries {
       throw new Error(`Failed to create usage log: ${result.error}`);
     }
 
-    const log = await this.db
-      .prepare('SELECT * FROM usage_logs WHERE id = ?1')
-      .bind(data.id)
-      .first<UsageLog>();
-
-    return log as UsageLog;
+    // Skip SELECT query to avoid hanging in waitUntil() context.
+    // We already have all the data, so just return the input.
+    return data as UsageLog;
   }
 
   /**

@@ -296,7 +296,7 @@ async function parseStreamForUsage(
   const reader = stream.getReader();
 
   // Helper to record usage - called on any stream termination
-  const recordUsage = (status: "success" | "error", errorCode?: string | null) => {
+  const recordUsage = async (status: "success" | "error", errorCode?: string | null) => {
     // Use accumulated output tokens if message_delta never arrived
     const finalOutputTokens = outputTokens > 0 ? outputTokens : accumulatedOutputTokens;
 
@@ -333,31 +333,44 @@ async function parseStreamForUsage(
       });
     }
 
-    // Record usage log
+    // Record usage log - MUST AWAIT to ensure write completes before function returns
     const usageService = new UsageService(env);
-    usageService.recordUsage({
+    console.log(`[${requestId}] About to call usageService.recordUsage with:`, {
       apiKeyId: usageContext.apiKeyId,
       userId: usageContext.userId,
-      companyId: null,
-      departmentId: usageContext.departmentId,
-      providerId: usageContext.providerId,
       modelId: usageContext.modelId,
       modelName: usageContext.modelName,
-      endpoint: "/v1/messages",
       inputTokens: usage.input_tokens,
       outputTokens: usage.output_tokens,
-      status,
-      errorCode: errorCode ?? undefined,
-      requestId,
-      responseTimeMs,
-    }).catch((err) => {
+    });
+    try {
+      const logId = await usageService.recordUsage({
+        apiKeyId: usageContext.apiKeyId,
+        userId: usageContext.userId,
+        companyId: null,
+        departmentId: usageContext.departmentId,
+        providerId: usageContext.providerId,
+        modelId: usageContext.modelId,
+        modelName: usageContext.modelName,
+        endpoint: "/v1/messages",
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        status,
+        errorCode: errorCode ?? undefined,
+        requestId,
+        responseTimeMs,
+      });
+      console.log(`[${requestId}] Successfully recorded usage log with ID: ${logId}`);
+    } catch (err) {
       console.error(`[${requestId}] Failed to record streaming usage: ${err}`);
-    });
+    }
 
-    // Update last_used_at
-    usageService.updateLastUsed(usageContext.apiKeyId).catch((err) => {
+    // Update last_used_at - also await
+    try {
+      await usageService.updateLastUsed(usageContext.apiKeyId);
+    } catch (err) {
       console.error(`[${requestId}] Failed to update last_used_at: ${err}`);
-    });
+    }
   };
 
   // Event counter for debugging (log first few events)
@@ -502,7 +515,7 @@ async function parseStreamForUsage(
             }
           }
         }
-        recordUsage("success");
+        await recordUsage("success");
         break;
       }
 
@@ -513,7 +526,7 @@ async function parseStreamForUsage(
   } catch (err: unknown) {
     // Read error - could be client disconnect, network error, or malformed SSE
     const errorCode = (err as Error)?.name === "AbortError" ? "CLIENT_DISCONNECT" : "STREAM_ERROR";
-    recordUsage("error", errorCode);
+    await recordUsage("error", errorCode);
   } finally {
     // Always release the reader lock to prevent resource leaks
     reader.releaseLock();
