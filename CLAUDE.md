@@ -108,6 +108,41 @@ pnpm dev:logs     # 查看日志
 - Admin Worker: `http://localhost:8788`
 - Pages 前端: `http://localhost:5173`
 
+### 生产部署规范
+
+#### 统一部署脚本
+
+部署到生产环境**必须**使用 `scripts/quick-deploy.sh` 脚本，并使用指定的 Cloudflare 账号。
+
+**正确方式**：
+```bash
+# 使用指定账号部署
+./scripts/quick-deploy.sh --account-id=9302c2040014763012133198c2c42709
+
+# 带自定义域名部署
+./scripts/quick-deploy.sh --account-id=9302c2040014763012133198c2c42709 --proxy-domain=api.example.com --admin-domain=admin.example.com
+```
+
+**禁止操作**：
+- ❌ 直接运行 `wrangler deploy`（会绕过统一配置流程）
+- ❌ 使用其他账号 ID 部署（会导致资源分散）
+- ❌ 手动创建 D1/KV 资源（脚本已幂等处理）
+
+**原因**：
+- 脚本自动创建/复用 D1 数据库、KV 命名空间
+- 统一管理 Worker 配置和路由规则
+- 自动应用数据库迁移
+- 自动初始化 Super Admin API Key
+- 幂等设计，可安全重复执行
+
+**部署资源**：
+- D1 Database: `agate-db`
+- KV Namespace: `agate-cache`
+- Proxy Worker: `agate-proxy`
+- Admin Worker: `agate-admin`
+- Health Worker: `agate-health`
+- Admin Frontend: `agate-admin` (Pages)
+
 ### Git 工作流
 1. 完成功能开发
 2. 编写/更新单元测试

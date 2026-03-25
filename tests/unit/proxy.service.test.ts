@@ -314,7 +314,7 @@ describe("ProxyService", () => {
       expect(mockUsageService.recordUsage).toHaveBeenCalledWith({
         apiKeyId: "key-123",
         userId: "user-123",
-        companyId: "company-123",
+        companyId: null,  // PRD V2 Phase 1: no company
         departmentId: "dept-123",
         providerId: "provider-123",
         modelId: "model-123",
@@ -597,6 +597,240 @@ describe("ProxyService", () => {
       await expect(
         proxyService.forwardMessage(mockAuthContext, fullRequest)
       ).resolves.toBeDefined();
+    });
+
+    it("should forward anthropic-beta header from client request", async () => {
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        json: vi.fn().mockResolvedValue({
+          usage: { input_tokens: 10, output_tokens: 20 },
+        }),
+        body: new ReadableStream(),
+      };
+
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      // Create mock request with anthropic-beta header
+      const mockClientRequest = new Request("https://example.com/v1/messages", {
+        headers: {
+          "anthropic-beta": "tools-2024-05-16,prompt-caching-2024-07-31",
+        },
+      });
+
+      await proxyService.forwardMessage(mockAuthContext, mockRequest, mockClientRequest);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://api.anthropic.com/v1/messages",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "anthropic-beta": "tools-2024-05-16,prompt-caching-2024-07-31",
+          }),
+        })
+      );
+    });
+
+    it("should pass through unknown parameters (Claude Code compatibility)", async () => {
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        json: vi.fn().mockResolvedValue({
+          usage: { input_tokens: 10, output_tokens: 20 },
+        }),
+        body: new ReadableStream(),
+      };
+
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      // Request with unknown parameters (future Claude Code features)
+      const requestWithUnknownParams: ProxyMessageRequest = {
+        model: "claude-3-sonnet",
+        messages: [{ role: "user", content: "Hello" }],
+        max_tokens: 100,
+        // Unknown params that should be passed through
+        unknown_param: "some_value",
+        future_feature: { enabled: true },
+      };
+
+      await proxyService.forwardMessage(mockAuthContext, requestWithUnknownParams);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+
+      expect(requestBody.unknown_param).toBe("some_value");
+      expect(requestBody.future_feature).toEqual({ enabled: true });
+    });
+
+    it("should support tool use parameters (Claude Code beta feature)", async () => {
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        json: vi.fn().mockResolvedValue({
+          usage: { input_tokens: 15, output_tokens: 25 },
+        }),
+        body: new ReadableStream(),
+      };
+
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const requestWithTools: ProxyMessageRequest = {
+        model: "claude-3-sonnet",
+        messages: [{ role: "user", content: "What's the weather?" }],
+        max_tokens: 100,
+        tools: [
+          {
+            name: "get_weather",
+            description: "Get current weather",
+            input_schema: {
+              type: "object",
+              properties: {
+                location: { type: "string" },
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "auto" },
+      };
+
+      await proxyService.forwardMessage(mockAuthContext, requestWithTools);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+
+      expect(requestBody.tools).toBeDefined();
+      expect(requestBody.tools).toHaveLength(1);
+      expect(requestBody.tools[0].name).toBe("get_weather");
+      expect(requestBody.tool_choice).toEqual({ type: "auto" });
+    });
+
+    it("should support extended thinking parameter (Claude Code beta feature)", async () => {
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        json: vi.fn().mockResolvedValue({
+          usage: { input_tokens: 20, output_tokens: 30 },
+        }),
+        body: new ReadableStream(),
+      };
+
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const requestWithThinking: ProxyMessageRequest = {
+        model: "claude-3-sonnet",
+        messages: [{ role: "user", content: "Solve this puzzle" }],
+        max_tokens: 100,
+        thinking: {
+          type: "enabled",
+          budget_tokens: 10000,
+        },
+      };
+
+      await proxyService.forwardMessage(mockAuthContext, requestWithThinking);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+
+      expect(requestBody.thinking).toBeDefined();
+      expect(requestBody.thinking.type).toBe("enabled");
+      expect(requestBody.thinking.budget_tokens).toBe(10000);
+    });
+
+    it("should support complex message content with tool_use blocks", async () => {
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        json: vi.fn().mockResolvedValue({
+          usage: { input_tokens: 25, output_tokens: 35 },
+        }),
+        body: new ReadableStream(),
+      };
+
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const requestWithToolContent: ProxyMessageRequest = {
+        model: "claude-3-sonnet",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Use the tool" },
+              {
+                type: "tool_use",
+                id: "toolu_123",
+                name: "search",
+                input: { query: "test" },
+              },
+            ],
+          },
+        ],
+        max_tokens: 100,
+      };
+
+      await proxyService.forwardMessage(mockAuthContext, requestWithToolContent);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+
+      expect(requestBody.messages[0].content).toEqual([
+        { type: "text", text: "Use the tool" },
+        {
+          type: "tool_use",
+          id: "toolu_123",
+          name: "search",
+          input: { query: "test" },
+        },
+      ]);
+    });
+
+    it("should support array-style system prompt (Claude Code feature)", async () => {
+      const mockResponse = {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        json: vi.fn().mockResolvedValue({
+          usage: { input_tokens: 15, output_tokens: 25 },
+        }),
+        body: new ReadableStream(),
+      };
+
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const requestWithArraySystem: ProxyMessageRequest = {
+        model: "claude-3-sonnet",
+        messages: [{ role: "user", content: "Hello" }],
+        max_tokens: 100,
+        system: [
+          { type: "text", text: "You are helpful" },
+          { type: "text", text: "Be concise", cache_control: { type: "ephemeral" } },
+        ],
+      };
+
+      await proxyService.forwardMessage(mockAuthContext, requestWithArraySystem);
+
+      const fetchCall = (global.fetch as any).mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+
+      expect(requestBody.system).toEqual([
+        { type: "text", text: "You are helpful" },
+        { type: "text", text: "Be concise", cache_control: { type: "ephemeral" } },
+      ]);
     });
   });
 });

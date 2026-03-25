@@ -434,6 +434,19 @@ export interface AuthContext {
 
 /**
  * Anthropic Messages API proxy request
+ *
+ * Extended to support Claude Code and Anthropic beta features:
+ * - Tool use (tools, tool_choice)
+ * - Extended thinking (thinking)
+ * - Beta features via anthropic-beta header
+ * - All unknown parameters are passed through to upstream
+ *
+ * Content block types supported:
+ * - text: Plain text content
+ * - image: Image content (for vision models)
+ * - tool_use: Tool use request
+ * - tool_result: Tool use result
+ * - thinking: Extended thinking content
  */
 export interface ProxyMessageRequest {
   /** Model identifier */
@@ -441,12 +454,29 @@ export interface ProxyMessageRequest {
   /** Message content */
   messages: Array<{
     role: 'user' | 'assistant';
-    content: string | Array<{ type: string; text: string }>;
+    content: string | Array<{
+      type: 'text' | 'image' | 'tool_use' | 'tool_result' | 'thinking';
+      text?: string;
+      source?: { type: string; media_type: string; data: string };
+      id?: string;
+      name?: string;
+      input?: Record<string, unknown>;
+      content?: string | Array<unknown>;
+      tool_use_id?: string;
+      is_error?: boolean;
+      thinking?: string;
+      [key: string]: unknown;
+    }>;
   }>;
   /** Maximum tokens to generate */
   max_tokens: number;
   /** System prompt (optional) */
-  system?: string;
+  system?: string | Array<{
+    type: string;
+    text: string;
+    cache_control?: { type: string };
+    [key: string]: unknown;
+  }>;
   /** Stop sequences (optional) */
   stop_sequences?: string[];
   /** Temperature (optional) */
@@ -457,6 +487,29 @@ export interface ProxyMessageRequest {
   top_p?: number;
   /** Stream flag (optional) */
   stream?: boolean;
+  /** Tools definition (for tool use beta feature) */
+  tools?: Array<{
+    name: string;
+    description?: string;
+    input_schema: Record<string, unknown>;
+    cache_control?: { type: string };
+  }>;
+  /** Tool choice preference */
+  tool_choice?: {
+    type: 'auto' | 'any' | 'tool';
+    name?: string;
+  } | 'auto' | 'any' | { type: 'tool'; name: string };
+  /** Extended thinking configuration */
+  thinking?: {
+    type: 'enabled' | 'disabled';
+    budget_tokens?: number;
+  };
+  /** Metadata for tracking (optional) */
+  metadata?: Record<string, unknown>;
+  /** Cache control headers (optional) */
+  cache_control?: Record<string, unknown> | { type: string };
+  /** Any additional parameters (passed through to upstream) */
+  [key: string]: unknown;
 }
 
 /**

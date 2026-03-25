@@ -47,6 +47,25 @@ export interface StreamingProxyResult extends ProxyResult {
   streaming: true;
   /** Readable stream of SSE events */
   stream: ReadableStream;
+  /** Context for recording usage after stream completes (added by forwardMessage) */
+  usageContext?: {
+    /** Auth context */
+    authContext: import("@agate/shared/types").AuthContext;
+    /** API Key ID */
+    apiKeyId: string;
+    /** User ID */
+    userId: string;
+    /** Department ID */
+    departmentId: string | null;
+    /** Provider ID */
+    providerId: string;
+    /** Model ID */
+    modelId: string;
+    /** Model name sent to upstream */
+    modelName: string;
+    /** Request start time */
+    startTime: number;
+  };
 }
 
 /**
@@ -99,13 +118,15 @@ export class ProxyService {
    *
    * @param authContext - Authentication context
    * @param request - Message request data
+   * @param clientRequest - Original client request (for header forwarding)
    * @returns Proxy result
    * @throws {QuotaExceededError} If quota exceeded
    * @throws {ValidationError} If model not allowed
    */
   async forwardMessage(
     authContext: AuthContext,
-    request: ProxyMessageRequest
+    request: ProxyMessageRequest,
+    clientRequest?: Request
   ): Promise<NonStreamingProxyResult | StreamingProxyResult> {
     const startTime = Date.now();
     const requestId = crypto.randomUUID();
@@ -169,7 +190,8 @@ export class ProxyService {
       request,
       credential,
       requestId,
-      upstreamModel
+      upstreamModel,
+      clientRequest?.headers
     );
 
     // Execute request
@@ -182,9 +204,20 @@ export class ProxyService {
 
     // Process usage based on response type
     if (result.streaming) {
-      // For streaming: usage will be captured from stream events
-      // Return early with streaming result
-      return result;
+      // For streaming: include context for usage recording after stream completes
+      return {
+        ...result,
+        usageContext: {
+          authContext,
+          apiKeyId: apiKey.id,
+          userId: user.id,
+          departmentId: authContext.departmentId,
+          providerId: credential.providerId,
+          modelId: model.id,
+          modelName: upstreamModel,
+          startTime,
+        },
+      };
     }
 
     // For non-streaming: extract usage from response body
@@ -265,10 +298,14 @@ export class ProxyService {
   /**
    * Builds the upstream request for Anthropic API.
    *
+   * Forwards all known parameters and passes through unknown parameters
+   * to support Claude Code and beta features (tools, extended thinking, etc.).
+   *
    * @param request - Original request data
    * @param credential - Selected provider credential
    * @param requestId - Request ID for tracing
    * @param upstreamModel - Actual model name to send to upstream
+   * @param clientHeaders - Original client request headers (for beta header forwarding)
    * @returns Fetch request init
    */
   private buildUpstreamRequest(
@@ -278,34 +315,63 @@ export class ProxyService {
       apiVersion: string | null;
     },
     requestId: string,
-    upstreamModel: string
+    upstreamModel: string,
+    clientHeaders?: Headers
   ): RequestInit {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "x-api-key": credential.apiKey,
       "anthropic-version": credential.apiVersion ?? "2023-06-01",
       "x-request-id": requestId,
     };
 
-    // Build request body with actual upstream model name
-    const body = JSON.stringify({
+    // Forward anthropic-beta headers from client if present
+    // This enables beta features like tools, computer use, extended thinking
+    if (clientHeaders) {
+      const betaHeaders = clientHeaders.get("anthropic-beta");
+      if (betaHeaders) {
+        headers["anthropic-beta"] = betaHeaders;
+      }
+    }
+
+    // Known parameters that we explicitly handle
+    const knownParams = new Set([
+      "model", "messages", "max_tokens", "system", "stop_sequences",
+      "temperature", "top_k", "top_p", "stream", "tools", "tool_choice",
+      "thinking", "metadata", "cache_control",
+    ]);
+
+    // Build request body with all parameters
+    const body: Record<string, unknown> = {
       model: upstreamModel,
       messages: request.messages,
       max_tokens: request.max_tokens,
-      ...(request.system && { system: request.system }),
-      ...(request.stop_sequences && { stop_sequences: request.stop_sequences }),
-      ...(request.temperature !== undefined && {
-        temperature: request.temperature,
-      }),
-      ...(request.top_k !== undefined && { top_k: request.top_k }),
-      ...(request.top_p !== undefined && { top_p: request.top_p }),
-      stream: request.stream ?? false,
-    });
+    };
+
+    // Add optional known parameters if present
+    if (request.system !== undefined) body.system = request.system;
+    if (request.stop_sequences) body.stop_sequences = request.stop_sequences;
+    if (request.temperature !== undefined) body.temperature = request.temperature;
+    if (request.top_k !== undefined) body.top_k = request.top_k;
+    if (request.top_p !== undefined) body.top_p = request.top_p;
+    if (request.tools) body.tools = request.tools;
+    if (request.tool_choice) body.tool_choice = request.tool_choice;
+    if (request.thinking) body.thinking = request.thinking;
+    if (request.metadata) body.metadata = request.metadata;
+    if (request.cache_control) body.cache_control = request.cache_control;
+    body.stream = request.stream ?? false;
+
+    // Pass through any unknown parameters (for Claude Code compatibility)
+    for (const [key, value] of Object.entries(request)) {
+      if (!knownParams.has(key) && value !== undefined) {
+        body[key] = value;
+      }
+    }
 
     return {
       method: "POST",
       headers,
-      body,
+      body: JSON.stringify(body),
     };
   }
 

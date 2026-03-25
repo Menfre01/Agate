@@ -2,6 +2,7 @@
  * Models List API
  *
  * Returns list of available models for the authenticated user.
+ * Anthropic-compatible format for Claude Code compatibility.
  *
  * @module api/proxy/models
  */
@@ -12,17 +13,23 @@ import { ModelService } from "@agate/proxy/services/model.service.js";
 import { withResponseLogging } from "@agate/shared/middleware/logger";
 
 /**
- * Model list entry format.
+ * Model list entry format (Anthropic-compatible).
+ *
+ * Anthropic's actual /v1/models response format:
+ * - id: model identifier (e.g., "claude-3-5-sonnet-20241022")
+ * - display_name: human-readable name
+ * - type: always "model"
  */
 interface ModelListEntry {
   id: string;
-  name: string;
-  context_length: number;
-  max_tokens: number;
+  display_name: string;
+  type: string;
 }
 
 /**
  * Models list response format (Anthropic-compatible).
+ *
+ * Matches Anthropic's /v1/models response structure.
  */
 interface ModelsListResponse {
   object: string;
@@ -31,6 +38,8 @@ interface ModelsListResponse {
 
 /**
  * Handles GET /v1/models requests.
+ *
+ * Returns Anthropic-compatible model list for Claude Code.
  */
 export async function handleModels(
   request: Request,
@@ -43,12 +52,13 @@ export async function handleModels(
   const modelService = new ModelService(env);
   const models = await modelService.listModels();
 
-  const data: ModelListEntry[] = models.map((model) => ({
-    id: model.model_id,
-    name: model.display_name,
-    context_length: model.context_window,
-    max_tokens: model.max_tokens,
-  }));
+  const data: ModelListEntry[] = models
+    .filter((model) => model.is_active)
+    .map((model) => ({
+      id: model.model_id,
+      display_name: model.display_name,
+      type: "model",
+    }));
 
   const response: ModelsListResponse = {
     object: "list",

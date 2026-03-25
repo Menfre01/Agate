@@ -52,8 +52,13 @@ function handleCorsPreflight(request: Request): Response | null {
 
 /**
  * Adds CORS headers to response.
+ * Skips if CORS headers are already present (e.g., from streaming handlers).
  */
 function withCorsHeaders(response: Response): Response {
+  // Check if CORS headers are already present
+  if (response.headers.has("Access-Control-Allow-Origin")) {
+    return response;
+  }
   const newResponse = new Response(response.body, response);
   newResponse.headers.set("Access-Control-Allow-Origin", "*");
   return newResponse;
