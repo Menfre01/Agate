@@ -210,14 +210,14 @@ DELETE /admin/users/:id                  # Delete user
 {
   "email": "user@example.com",
   "name": "John Doe",
-  "company_id": "co_123",      // Optional, reserved for V2 Phase 2
-  "department_id": "dept_456", // Optional, reserved for V2 Phase 2
+  "company_id": "co_123",      // Optional, reserved for Phase 2
+  "department_id": "dept_456", // Optional, reserved for Phase 2
   "role": "user",
   "quota_daily": 100000
 }
 ```
 
-**Note for V2 Phase 1:** `company_id` and `department_id` are optional. These fields are reserved for future Phase 2 implementation and are not used in business logic during Phase 1.
+**Note for Phase 1:** `company_id` and `department_id` are optional. These fields are reserved for future Phase 2 implementation and are not used in business logic during Phase 1.
 
 #### API Keys
 
@@ -258,8 +258,10 @@ POST   /admin/providers                       # Create provider
 GET    /admin/providers/:id                   # Get provider details
 PUT    /admin/providers/:id                   # Update provider
 DELETE /admin/providers/:id                   # Delete provider
+GET    /admin/providers/:id/credentials       # List provider credentials
 POST   /admin/providers/:id/credentials       # Add credential
 DELETE /admin/providers/credentials/:id       # Delete credential
+DELETE /admin/providers/:id/credentials/:credentialId  # Delete credential (nested route)
 GET    /admin/providers/health-status         # Get all credentials health status
 POST   /admin/providers/credentials/:id/health-check  # Trigger health check
 ```
@@ -282,7 +284,7 @@ POST   /admin/providers/credentials/:id/health-check  # Trigger health check
 }
 ```
 
-**Note:** `priority` and `weight` fields are removed in V2 (consistent hash algorithm is used instead).
+**Note:** `priority` and `weight` fields are removed (consistent hash algorithm is used instead).
 
 #### Models
 
@@ -343,8 +345,17 @@ GET /admin/stats/usage               # Usage statistics
 GET /admin/stats/tokens              # Token usage
 GET /admin/stats/costs               # Cost analysis
 GET /admin/stats/models              # Model usage statistics
+GET /admin/stats/provider-models     # Provider-Model usage statistics
 GET /admin/stats/health-check        # Health check statistics
 GET /admin/stats/health-check/usage  # Health check usage logs
+```
+
+#### User API
+
+```bash
+GET /user/auth                   # Verify API key and return user info (alias for /admin/auth)
+GET /user/stats/tokens           # Token usage (filtered to authenticated user)
+GET /user/stats/tokens/trend     # Token usage trend by time period
 ```
 
 **Usage Statistics Parameters:**

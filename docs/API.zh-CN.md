@@ -12,6 +12,7 @@
 - [认证](#认证)
 - [代理 API](#代理-api)
 - [管理 API](#管理-api)
+- [用户 API](#用户-api)
 - [错误代码](#错误代码)
 - [速率限制](#速率限制)
 
@@ -20,7 +21,7 @@
 Agate 使用 **拆分 Worker 架构**，API 端点由不同的 Worker 提供服务：
 
 - **Proxy Worker** — 处理 `/v1/*` 端点（高频 API 请求）
-- **Admin Worker** — 处理 `/admin/*` 端点（管理操作）
+- **Admin Worker** — 处理 `/admin/*` 和 `/user/*` 端点（管理操作）
 
 生产环境中，这些通常部署在不同的域名上：
 - Proxy: `https://api.yourdomain.com` 或 `https://agate-proxy.YOUR_ACCOUNT.workers.dev`
@@ -51,7 +52,7 @@ API 密钥必须以 `sk-` 开头，且至少 20 个字符。
 | 角色 | 描述 |
 |------|------|
 | `admin` | 完全访问所有 Admin API 端点 |
-| `user` | 仅访问 Proxy API |
+| `user` | 仅访问 Proxy API 和 User API |
 
 ### 代理 API
 
@@ -217,7 +218,7 @@ DELETE /admin/users/:id                  # 删除用户
 }
 ```
 
-**V2 第一期说明：** `company_id` 和 `department_id` 为可选字段，留待第二期使用，第一期业务逻辑不依赖这些字段。
+**第一期说明：** `company_id` 和 `department_id` 为可选字段，留待第二期使用，第一期业务逻辑不依赖这些字段。
 
 #### API Key 管理
 
@@ -258,9 +259,11 @@ POST   /admin/providers                       # 创建供应商
 GET    /admin/providers/:id                   # 获取供应商详情
 PUT    /admin/providers/:id                   # 更新供应商
 DELETE /admin/providers/:id                   # 删除供应商
+GET    /admin/providers/:id/credentials       # 列出供应商凭证
 POST   /admin/providers/:id/credentials       # 添加凭证
 DELETE /admin/providers/credentials/:id       # 删除凭证
-GET    /admin/providers/health-status         # 查看所有凭证健康状态
+DELETE /admin/providers/:id/credentials/:credentialId  # 删除凭证（嵌套路由）
+GET    /admin/providers/health-status         # 获取所有凭证健康状态
 POST   /admin/providers/credentials/:id/health-check  # 手动触发健康检查
 ```
 
@@ -282,7 +285,7 @@ POST   /admin/providers/credentials/:id/health-check  # 手动触发健康检查
 }
 ```
 
-**说明：** V2 已移除 `priority` 和 `weight` 字段，改用一致性哈希算法。
+**说明：** 已移除 `priority` 和 `weight` 字段，改用一致性哈希算法。
 
 #### 模型管理
 
@@ -343,6 +346,7 @@ GET /admin/stats/usage               # 使用统计
 GET /admin/stats/tokens              # Token 用量
 GET /admin/stats/costs               # 成本分析
 GET /admin/stats/models              # 模型使用统计
+GET /admin/stats/provider-models     # 供应商-模型使用统计
 GET /admin/stats/health-check        # 健康检查统计
 GET /admin/stats/health-check/usage  # 健康检查使用日志
 ```
@@ -373,6 +377,26 @@ GET /admin/logs    # 查询使用日志
 - `status` - 按状态筛选：`success` | `error`（可选）
 - `page` - 页码（默认：1）
 - `page_size` - 每页条目（默认：50，最大：500）
+
+### 用户 API
+
+用户 API 端点需要具有 `user` 或 `admin` 角色的 API 密钥。`/user/*` 端点会自动过滤数据，仅返回当前认证用户的信息。
+
+#### 认证
+
+```bash
+GET /user/auth    # 验证 API 密钥并返回用户信息（/admin/auth 的别名）
+```
+
+#### Token 统计
+
+```bash
+GET /user/stats/tokens          # Token 用量汇总（自动过滤当前用户）
+GET /user/stats/tokens/trend    # Token 用量趋势（按时间段分组）
+```
+
+**Token 统计参数：**
+- `period` - 时间周期：`hour` | `day` | `week` | `month`（默认：`day`）
 
 ### 错误代码
 

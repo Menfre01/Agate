@@ -76,8 +76,8 @@ The script will automatically:
 #### Step 1: Clone and Install
 
 ```bash
-git clone https://github.com/your-repo/ai-gateway.git
-cd ai-gateway
+git clone git@github.com:Menfre01/agate.git
+cd agate
 npm install
 ```
 
@@ -93,13 +93,10 @@ wrangler d1 create agate-db
 #### Step 3: Create KV Namespace
 
 ```bash
-# Create production namespace
+# Create namespace
 wrangler kv:namespace create "agate-cache"
 
-# Create preview namespace
-wrangler kv:namespace create "agate-cache" --preview
-
-# Copy the returned IDs
+# Copy the returned ID
 ```
 
 #### Step 4: Create Production Configs
@@ -121,8 +118,7 @@ Create `workers/proxy/wrangler.prod.jsonc`:
 
   "kv_namespaces": [{
     "binding": "KV_CACHE",
-    "id": "YOUR_KV_NAMESPACE_ID",
-    "preview_id": "YOUR_KV_PREVIEW_ID"
+    "id": "YOUR_KV_NAMESPACE_ID"
   }],
 
   "vars": {
@@ -155,8 +151,7 @@ Create `workers/admin/wrangler.prod.jsonc`:
 
   "kv_namespaces": [{
     "binding": "KV_CACHE",
-    "id": "YOUR_KV_NAMESPACE_ID",
-    "preview_id": "YOUR_KV_PREVIEW_ID"
+    "id": "YOUR_KV_NAMESPACE_ID"
   }],
 
   "vars": {
@@ -167,6 +162,40 @@ Create `workers/admin/wrangler.prod.jsonc`:
     {
       "pattern": "admin.yourdomain.com/*",
       "zone_name": "yourdomain.com"
+    }
+  ]
+}
+```
+
+Create `workers/health/wrangler.prod.jsonc`:
+
+```jsonc
+{
+  "name": "agate-health",
+  "compatibility_date": "2024-01-01",
+  "main": "src/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "agate-db",
+    "database_id": "YOUR_D1_DATABASE_ID"
+  }],
+
+  "kv_namespaces": [{
+    "binding": "KV_CACHE",
+    "id": "YOUR_KV_NAMESPACE_ID"
+  }],
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "SYSTEM_USER_ID": "sys-health-user",
+    "SYSTEM_COMPANY_ID": "sys-health"
+  },
+
+  "triggers": [
+    {
+      "cron": "*/5 * * * *"
     }
   ]
 }
@@ -216,6 +245,8 @@ cd ../..
 ```bash
 node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc
 ```
+
+The script will generate a super admin API key and save it to `.admin-api-key` file in the project root. **Keep this key secure** - it provides full access to all Admin API endpoints.
 
 ---
 

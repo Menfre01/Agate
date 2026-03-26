@@ -73,8 +73,8 @@ wrangler login
 #### 步骤 1：克隆并安装
 
 ```bash
-git clone https://github.com/your-repo/ai-gateway.git
-cd ai-gateway
+git clone git@github.com:Menfre01/agate.git
+cd agate
 npm install
 ```
 
@@ -90,11 +90,8 @@ wrangler d1 create agate-db
 #### 步骤 3：创建 KV 命名空间
 
 ```bash
-# 创建生产命名空间
+# 创建命名空间
 wrangler kv:namespace create "agate-cache"
-
-# 创建预览命名空间
-wrangler kv:namespace create "agate-cache" --preview
 
 # 复制返回的 ID
 ```
@@ -118,8 +115,7 @@ wrangler kv:namespace create "agate-cache" --preview
 
   "kv_namespaces": [{
     "binding": "KV_CACHE",
-    "id": "你的_KV_NAMESPACE_ID",
-    "preview_id": "你的_KV_PREVIEW_ID"
+    "id": "你的_KV_NAMESPACE_ID"
   }],
 
   "vars": {
@@ -152,8 +148,7 @@ wrangler kv:namespace create "agate-cache" --preview
 
   "kv_namespaces": [{
     "binding": "KV_CACHE",
-    "id": "你的_KV_NAMESPACE_ID",
-    "preview_id": "你的_KV_PREVIEW_ID"
+    "id": "你的_KV_NAMESPACE_ID"
   }],
 
   "vars": {
@@ -186,8 +181,7 @@ wrangler kv:namespace create "agate-cache" --preview
 
   "kv_namespaces": [{
     "binding": "KV_CACHE",
-    "id": "你的_KV_NAMESPACE_ID",
-    "preview_id": "你的_KV_PREVIEW_ID"
+    "id": "你的_KV_NAMESPACE_ID"
   }],
 
   "vars": {
@@ -248,6 +242,8 @@ cd ../..
 ```bash
 node scripts/init-admin-key.js --prod --config workers/admin/wrangler.prod.jsonc
 ```
+
+脚本将生成超级管理员 API Key 并保存到项目根目录的 `.admin-api-key` 文件中。**请妥善保管此密钥** - 它拥有所有管理 API 的完全访问权限。
 
 ---
 

@@ -270,6 +270,10 @@ export class ProxyService {
   /**
    * Executes the upstream request and handles streaming.
    *
+   * Connection timeout is set to 15 seconds to prevent hanging on
+   * unresponsive upstream servers. This only affects the initial
+   * connection phase - streaming responses are not timed out.
+   *
    * @param request - Upstream request
    * @param baseUrl - Provider base URL
    * @param requestId - Request ID for tracing
@@ -283,7 +287,29 @@ export class ProxyService {
     startTime: number
   ): Promise<NonStreamingProxyResult | StreamingProxyResult> {
     const url = `${baseUrl}/v1/messages`;
-    const response = await fetch(url, request);
+
+    // Set 15 second connection timeout to prevent hanging
+    // This only affects fetch() waiting for response headers
+    // Streaming data transfer after fetch returns is not limited
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...request,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error(`[executeRequest] Connection timeout: requestId=${requestId}, url=${url}, timeoutMs=15000`);
+        throw new Error(`Upstream connection timeout: ${baseUrl}`);
+      }
+      throw error;
+    }
+
     const responseTimeMs = Date.now() - startTime;
 
     // Check for upstream error status codes

@@ -8,7 +8,7 @@
 
 ## 架构概览
 
-Agate V2 是基于 Cloudflare Workers 的多租户 AI API 网关，专注于：
+Agate 是基于 Cloudflare Workers 的多租户 AI API 网关，专注于：
 
 1. **两层一致性哈希负载均衡** — 缓存友好的路由
 2. **自动化健康检查** — 配额保护机制

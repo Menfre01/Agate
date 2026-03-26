@@ -8,7 +8,7 @@
 
 ## Architecture Overview
 
-Agate V2 is a multi-tenant AI API gateway built on Cloudflare Workers with a focus on:
+Agate is a multi-tenant AI API gateway built on Cloudflare Workers with a focus on:
 
 1. **Two-layer consistent hash load balancing** for cache-friendly routing
 2. **Automated health checks** with quota protection
