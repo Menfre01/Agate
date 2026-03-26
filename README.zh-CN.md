@@ -12,7 +12,7 @@
 
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
 ![Version](https://img.shields.io/badge/version-v0.0.1-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 </div>
 
@@ -174,4 +174,4 @@ pnpm lint
 
 ## 许可证
 
-[MIT](./LICENSE) © 2025 Agate 贡献者
+[Apache-2.0](./LICENSE) © 2026 Agate 贡献者
